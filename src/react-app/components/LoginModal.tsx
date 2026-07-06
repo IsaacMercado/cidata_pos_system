@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { api } from "../lib/api";
+import { Button } from "./ui";
 
 type AuthMode = "login" | "register";
 
@@ -123,13 +124,14 @@ export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
           {error && (
             <p className="text-sm text-red-400">{error}</p>
           )}
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+            variant="primary"
+            className="rounded-lg bg-violet-600 hover:bg-violet-500"
           >
             {loading ? "..." : mode === "login" ? "Login" : "Register"}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

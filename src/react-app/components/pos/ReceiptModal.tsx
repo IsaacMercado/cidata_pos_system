@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { SaleWithItems } from "../../lib/types";
+import { Button } from "../ui";
 
 const methodLabel: Record<number, string> = {
   1: "Efectivo",
@@ -103,18 +104,12 @@ export function ReceiptModal({
       </div>
 
       <div className="flex gap-2 p-4 pt-0 print:hidden">
-        <button
-          onClick={handlePrint}
-          className="flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors"
-        >
+        <Button onClick={handlePrint} variant="dark" className="flex-1 rounded-xl">
           Imprimir
-        </button>
-        <button
-          onClick={onClose}
-          className="flex-1 py-2.5 bg-zinc-100 text-zinc-600 rounded-xl text-sm font-medium hover:bg-zinc-200 transition-colors"
-        >
+        </Button>
+        <Button onClick={onClose} variant="light" className="flex-1 rounded-xl">
           Cerrar
-        </button>
+        </Button>
       </div>
     </dialog>
   );

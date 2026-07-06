@@ -1,27 +1,28 @@
-import { useState, useEffect } from "preact/hooks";
-import type { ProductWithCategory, CartItem, SaleWithItems } from "../lib/types";
-import { api } from "../lib/api";
-import { useToast } from "../components/pos/Toast";
-import { ReceiptModal } from "../components/pos/ReceiptModal";
 import {
-  cacheProducts,
-  getCachedProducts,
-  addPendingOp,
-} from "../lib/db";
-import { useOnlineStatus } from "../lib/useOnlineStatus";
-import {
-  Search,
-  ShoppingCart,
-  Package,
-  Coffee,
-  Sandwich,
-  Popcorn,
-  Milk,
-  Sparkles,
-  X,
-  Minus,
-  Plus,
+    Coffee,
+    Milk,
+    Minus,
+    Package,
+    Plus,
+    Popcorn,
+    Sandwich,
+    Search,
+    ShoppingCart,
+    Sparkles,
+    X,
 } from "lucide-react";
+import { useEffect, useState } from "preact/hooks";
+import { ReceiptModal } from "../components/pos/ReceiptModal";
+import { useToast } from "../components/pos/Toast";
+import { Button, Loading, Modal } from "../components/ui";
+import { api } from "../lib/api";
+import {
+    addPendingOp,
+    cacheProducts,
+    getCachedProducts,
+} from "../lib/db";
+import type { CartItem, ProductWithCategory, SaleWithItems } from "../lib/types";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 interface Order {
   id: number;
@@ -268,28 +269,16 @@ export function PosPage() {
     });
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-zinc-400">
-        <div className="animate-pulse flex flex-col items-center gap-2">
-          <div className="w-8 h-8 rounded-full border-2 border-zinc-300 border-t-indigo-500 animate-spin" />
-          <span className="text-sm">Cargando...</span>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <Loading spinner text="Cargando..." />;
 
   return (
     <>
       <div className="flex h-full flex-col lg:flex-row">
         <div className="lg:hidden fixed bottom-4 left-4 right-4 z-30">
-          <button
-            onClick={() => setCartOpen(true)}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 font-medium"
-          >
+          <Button onClick={() => setCartOpen(true)} className="w-full py-3 rounded-xl shadow-lg">
             <ShoppingCart size={18} />
             {activeOrder.name} — ${total.toFixed(2)}
-          </button>
+          </Button>
         </div>
 
         <div className="flex-1 flex flex-col lg:border-r border-zinc-200 pb-20 lg:pb-0">
@@ -387,12 +376,9 @@ export function PosPage() {
                 )}
               </button>
             ))}
-            <button
-              onClick={addOrder}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors flex-shrink-0"
-            >
+            <Button onClick={addOrder} variant="light" size="sm">
               <Plus size={14} /> Nueva
-            </button>
+            </Button>
           </div>
 
           <div className="flex-1 overflow-auto p-3 space-y-2">
@@ -404,15 +390,17 @@ export function PosPage() {
                   <p className="text-xs text-zinc-400">${item.product.price.toFixed(2)} c/u</p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
+                  <Button
                     onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                    className="w-8 h-8 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
-                  ><Minus size={14} /></button>
+                    className="w-8 h-8"
+                    size="sm" variant="ghost"
+                  ><Minus size={14} /></Button>
                   <span className="w-8 text-center text-sm font-semibold text-zinc-800">{item.quantity}</span>
-                  <button
+                  <Button
                     onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                    className="w-8 h-8 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors disabled:opacity-30"
-                  ><Plus size={14} /></button>
+                    className="w-8 h-8"
+                    size="sm" variant="ghost"
+                  ><Plus size={14} /></Button>
                 </div>
               </div>
             ))}
@@ -435,74 +423,63 @@ export function PosPage() {
 
             <div className="flex gap-2">
               {orders.length > 1 && activeOrder.items.length === 0 && (
-                <button
-                  onClick={() => removeOrder(activeOrder.id)}
-                  className="flex-1 py-3 bg-zinc-100 text-zinc-500 rounded-xl text-sm font-medium hover:bg-red-100 hover:text-red-600 transition-colors"
-                >
+                <Button onClick={() => removeOrder(activeOrder.id)} variant="light" className="flex-1">
                   Descartar
-                </button>
+                </Button>
               )}
-              <button
-                onClick={openPayDialog}
-                disabled={activeOrder.items.length === 0 || submitting}
-                className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white rounded-xl text-sm font-semibold hover:from-indigo-500 hover:to-indigo-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] shadow-lg shadow-indigo-200"
-              >
+              <Button onClick={openPayDialog} disabled={activeOrder.items.length === 0 || submitting} variant="primary" className="flex-1 py-3 rounded-xl shadow-lg shadow-indigo-200">
                 Cobrar
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {payDialog && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/45 p-3 sm:items-center">
-          <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Cobrar {activeOrder.name}</h3>
-                <p className="text-sm text-slate-500">Combina efectivo, tarjeta o transferencia.</p>
-              </div>
-              <button className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100" onClick={() => setPayDialog(false)}>Cerrar</button>
-            </div>
+      <Modal open={payDialog} onClose={() => setPayDialog(false)}>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Cobrar {activeOrder.name}</h3>
+            <p className="text-sm text-slate-500">Combina efectivo, tarjeta o transferencia.</p>
+          </div>
+          <button className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100" onClick={() => setPayDialog(false)}>Cerrar</button>
+        </div>
 
-            <div className="mb-3 rounded-2xl bg-slate-50 px-4 py-3">
-              <div className="flex items-center justify-between text-sm text-slate-500">
-                <span>Total</span>
-                <span className="text-xl font-bold text-slate-900">${total.toFixed(2)}</span>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {payments.map((payment, index) => (
-                <div key={index} className="grid grid-cols-[1fr_120px_auto] items-center gap-3 rounded-2xl border border-slate-200 p-3">
-                  <select className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" value={payment.methodId} onChange={(e: any) => updatePayment(index, "methodId", parseInt(e.target.value))}>
-                    {pays.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                  <input className="rounded-xl border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-violet-500" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
-                  <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>
-                </div>
-              ))}
-            </div>
-
-            <button className="mt-3 w-full rounded-xl border border-dashed border-violet-300 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50" onClick={addPaymentSplit} disabled={paymentDiff <= 0.01}>Agregar otra forma de pago</button>
-
-            <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Pagado</span>
-                <span className="font-semibold text-slate-900">${paymentsTotal.toFixed(2)}</span>
-              </div>
-              <div className="mt-1 flex items-center justify-between">
-                <span className="text-slate-500">Diferencia</span>
-                <span className={`font-semibold ${Math.abs(paymentDiff) < 0.009 ? "text-emerald-600" : "text-rose-600"}`}>{Math.abs(paymentDiff) < 0.009 ? "Cuadrado" : `$${Math.abs(paymentDiff).toFixed(2)}`}</span>
-              </div>
-            </div>
-
-            <button className="mt-4 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-3 text-base font-semibold text-white disabled:opacity-50" onClick={submitPayment} disabled={submitting || Math.abs(paymentDiff) > 0.009}>
-              {submitting ? "Procesando..." : `Confirmar cobro de $${total.toFixed(2)}`}
-            </button>
+        <div className="mb-3 rounded-2xl bg-slate-50 px-4 py-3">
+          <div className="flex items-center justify-between text-sm text-slate-500">
+            <span>Total</span>
+            <span className="text-xl font-bold text-slate-900">${total.toFixed(2)}</span>
           </div>
         </div>
-      )}
+
+        <div className="space-y-3">
+          {payments.map((payment, index) => (
+            <div key={index} className="grid grid-cols-[1fr_120px_auto] items-center gap-3 rounded-2xl border border-slate-200 p-3">
+              <select className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" value={payment.methodId} onChange={(e: any) => updatePayment(index, "methodId", parseInt(e.target.value))}>
+                {pays.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <input className="rounded-xl border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-violet-500" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
+              <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>
+            </div>
+          ))}
+        </div>
+
+        <button className="mt-3 w-full rounded-xl border border-dashed border-violet-300 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50" onClick={addPaymentSplit} disabled={paymentDiff <= 0.01}>Agregar otra forma de pago</button>
+
+        <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">Pagado</span>
+            <span className="font-semibold text-slate-900">${paymentsTotal.toFixed(2)}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="text-slate-500">Diferencia</span>
+            <span className={`font-semibold ${Math.abs(paymentDiff) < 0.009 ? "text-emerald-600" : "text-rose-600"}`}>{Math.abs(paymentDiff) < 0.009 ? "Cuadrado" : `$${Math.abs(paymentDiff).toFixed(2)}`}</span>
+          </div>
+        </div>
+
+        <Button variant="success" size="lg" className="mt-4 w-full rounded-2xl" onClick={submitPayment} disabled={submitting || Math.abs(paymentDiff) > 0.009}>
+          {submitting ? "Procesando..." : `Confirmar cobro de $${total.toFixed(2)}`}
+        </Button>
+      </Modal>
 
       {receiptSale && <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />}
     </>

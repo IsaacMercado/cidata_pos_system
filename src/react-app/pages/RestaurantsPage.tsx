@@ -15,6 +15,7 @@ import {
 import { paymentMethods } from "../lib/paymentMethods";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { useToast } from "../components/pos/Toast";
+import { Button, Card } from "../components/ui";
 
 type TableShape = "circle" | "rectangle";
 type TableForm = { name: string; capacity: number; shape: TableShape };
@@ -388,12 +389,12 @@ export function RestaurantsPage() {
             <h2 className="text-lg font-bold text-slate-900">Restaurantes</h2>
             <p className="text-sm text-slate-500">Administra salones y abre el mapa de mesas.</p>
           </div>
-          <button
-            className={`rounded-xl px-3 py-2 text-sm font-medium ${showForm ? "bg-slate-200 text-slate-700" : "bg-gradient-to-r from-violet-600 to-cyan-600 text-white"}`}
+          <Button
+            variant={showForm ? "ghost" : "accent"}
             onClick={() => setShowForm((value) => !value)}
           >
             {showForm ? "Cancelar" : "Nuevo restaurante"}
-          </button>
+          </Button>
         </div>
 
         {showForm && (
@@ -402,13 +403,13 @@ export function RestaurantsPage() {
               <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Nombre" {...restForm.register("name", { required: true })} />
               <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Descripción" {...restForm.register("description")} />
             </div>
-            <button className="mt-3 w-full rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-4 py-2 text-sm font-semibold text-white">Guardar</button>
+            <Button variant="accent" className="mt-3 w-full">Guardar</Button>
           </form>
         )}
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {list.map((item: any) => (
-            <div key={item.id} className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
+            <Card key={item.id}>
               <div className="mb-4">
                 <h3 className="font-semibold text-slate-900">{item.name}</h3>
                 <p className="text-sm text-slate-500">{item.description || "Sin descripción"}</p>
@@ -417,7 +418,7 @@ export function RestaurantsPage() {
                 <a href={`/restaurants/${item.id}/order`} className="rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-3 py-2 text-sm font-medium text-white">Abrir mesas</a>
                 <a href={`/restaurants/${item.id}/layout`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">Diseño</a>
               </div>
-            </div>
+            </Card>
           ))}
           {list.length === 0 && <div className="py-12 text-center text-sm text-slate-400">Crea un restaurante para empezar.</div>}
         </div>
@@ -439,7 +440,7 @@ export function RestaurantsPage() {
           </div>
           <div className="flex gap-2">
             <a href={`/restaurants/${restaurant.id}/order`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">Servicio</a>
-            <button className="rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-3 py-2 text-sm font-medium text-white" onClick={() => { tableForm.reset({ name: `Mesa ${tables.length + 1}`, capacity: 2, shape: "circle" }); setShowTableForm(true); }}>Nueva mesa</button>
+            <Button variant="accent" size="sm" onClick={() => { tableForm.reset({ name: `Mesa ${tables.length + 1}`, capacity: 2, shape: "circle" }); setShowTableForm(true); }}>Nueva mesa</Button>
           </div>
         </div>
 
@@ -458,13 +459,13 @@ export function RestaurantsPage() {
               ))}
             </div>
             <div className="mt-3 flex gap-2">
-              <button className="rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-4 py-2 text-sm font-semibold text-white">Guardar mesa</button>
-              <button type="button" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setShowTableForm(false)}>Cancelar</button>
+              <Button variant="accent">Guardar mesa</Button>
+              <Button variant="outline" type="button" onClick={() => setShowTableForm(false)}>Cancelar</Button>
             </div>
           </form>
         )}
 
-        <div className="mb-4 rounded-2xl border border-slate-200 bg-white/90 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
+        <Card className="mb-4">
           <div className="flex items-center gap-4 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
             <span className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-emerald-500" /> Libre</span>
             <span className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-rose-500" /> En servicio</span>
@@ -485,9 +486,9 @@ export function RestaurantsPage() {
             ))}
             {tables.length === 0 && <div className="flex h-[380px] items-center justify-center text-sm text-slate-400">Crea la primera mesa para este salón.</div>}
           </div>
-        </div>
+        </Card>
 
-        <div className="rounded-2xl border border-slate-200 bg-white/90 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
+        <Card>
           <div className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">Mesas del salón</div>
           {tables.map((table: any) => (
             <div key={table.id} className="flex items-center gap-3 border-b border-slate-50 px-4 py-3 last:border-b-0">
@@ -496,10 +497,10 @@ export function RestaurantsPage() {
                 <div className="font-medium text-slate-900">{table.name}</div>
                 <div className="text-xs text-slate-500">{labelByStatus[table.status] || table.status} · {table.capacity} personas</div>
               </div>
-              <button className="rounded-lg px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50" onClick={() => removeTable(table.id)}>Eliminar</button>
+              <Button variant="danger" size="sm" onClick={() => removeTable(table.id)}>Eliminar</Button>
             </div>
           ))}
-        </div>
+        </Card>
       </div>
     );
   }
@@ -593,7 +594,7 @@ export function RestaurantsPage() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_340px]">
-        <aside className="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
+        <aside className="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]" style="align-self: start;">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-slate-900">Mesas</h3>

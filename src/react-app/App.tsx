@@ -1,17 +1,18 @@
-import { useState, useEffect } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Route, Switch } from "wouter-preact";
-import { PosPage } from "./pages/PosPage";
-import { ProductsPage } from "./pages/ProductsPage";
-import { CustomersPage } from "./pages/CustomersPage";
-import { SalesPage } from "./pages/SalesPage";
-import { RestaurantsPage } from "./pages/RestaurantsPage";
+import { LoginModal } from "./components/LoginModal";
+import { OfflineBanner } from "./components/OfflineBanner";
 import { Sidebar } from "./components/pos/Sidebar";
 import { ToastProvider } from "./components/pos/Toast";
-import { OfflineBanner } from "./components/OfflineBanner";
-import { LoginModal } from "./components/LoginModal";
-import { useOnlineStatus } from "./lib/useOnlineStatus";
+import { Button, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { syncPendingOps } from "./lib/db";
+import { useOnlineStatus } from "./lib/useOnlineStatus";
+import { CustomersPage } from "./pages/CustomersPage";
+import { PosPage } from "./pages/PosPage";
+import { ProductsPage } from "./pages/ProductsPage";
+import { RestaurantsPage } from "./pages/RestaurantsPage";
+import { SalesPage } from "./pages/SalesPage";
 import "./style.css";
 
 export function App() {
@@ -43,16 +44,7 @@ export function App() {
     setUser(null);
   };
 
-  if (restoring) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-indigo-400" />
-          <span className="text-sm text-slate-400">Restaurando sesión...</span>
-        </div>
-      </div>
-    );
-  }
+  if (restoring) return <Loading fullPage text="Restaurando sesión..." />;
 
   return (
     <ToastProvider>
@@ -70,12 +62,9 @@ export function App() {
               {user.username}
             </span>
           ) : (
-            <button
-              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
-              onClick={() => setModalOpen(true)}
-            >
+            <Button size="sm" onClick={() => setModalOpen(true)}>
               Login / Register
-            </button>
+            </Button>
           )}
         </header>
 

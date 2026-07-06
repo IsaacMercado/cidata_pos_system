@@ -1,9 +1,10 @@
-import { useState, useEffect } from "preact/hooks";
-import { api } from "../lib/api";
+import { Banknote, Building, CreditCard, Receipt, Smartphone } from "lucide-react";
+import { useEffect, useState } from "preact/hooks";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
+import { Badge, Button, Loading, Modal, PageHeader, Table } from "../components/ui";
+import { api } from "../lib/api";
 import type { SaleWithItems } from "../lib/types";
-import { Receipt, Banknote, CreditCard, Building, Smartphone } from "lucide-react";
 
 const METHOD_ICON: Record<number, typeof Banknote> = {
   1: Banknote,
@@ -56,175 +57,131 @@ export function SalesPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-zinc-400 py-12">
-        <div className="animate-pulse text-sm">Cargando...</div>
-      </div>
-    );
-  }
+  if (loading) return <Loading text="Cargando..." />;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <h1 className="text-xl font-bold text-zinc-800 mb-6 flex items-center gap-2">
-        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white">
-          <Receipt size={14} />
-        </span>
-        Historial de Ventas
-      </h1>
+      <PageHeader title="Historial de Ventas" icon={Receipt} />
 
-      <div className="overflow-hidden border border-zinc-200 rounded-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-50 text-left">
-                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Recibo</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Fecha</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider hidden sm:table-cell">Productos</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider text-right">Total</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Estado</th>
-                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sales.map((sale) => (
-                <tr key={sale.id} className={`border-t border-zinc-100 hover:bg-indigo-50/30 transition-colors cursor-pointer ${detailId === sale.id ? "bg-indigo-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
-                  <td className="px-4 py-3 font-medium text-zinc-800">{sale.receiptNumber}</td>
-                  <td className="px-4 py-3 text-xs text-zinc-500 whitespace-nowrap">
-                    {new Date(sale.createdAt).toLocaleDateString()}{" "}
-                    <span className="text-zinc-300">
-                      {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-zinc-500 hidden sm:table-cell">{sale.items?.length ?? 0} artículos</td>
-                  <td className="px-4 py-3 text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      sale.status === "completed"
-                        ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
-                        : sale.status === "cancelled"
-                        ? "text-red-600 bg-red-50 border border-red-200"
-                        : "text-amber-600 bg-amber-50 border border-amber-200"
-                    }`}>
-                      {sale.status === "completed" ? "Completada" : sale.status === "cancelled" ? "Cancelada" : sale.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {sale.status === "completed" && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
-                        className="text-xs text-red-400 hover:text-red-600 transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {sales.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-zinc-400">No hay ventas registradas</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {detail && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-3"
-          onClick={() => { setDetail(null); setDetailId(null); }}
-        >
-          <dialog
-            open
-            className="rounded-2xl shadow-2xl border border-zinc-200 p-0 w-full max-w-lg bg-white max-h-[90dvh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-zinc-800">Detalle de Venta</h2>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  detail.status === "completed"
-                    ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
-                    : "text-red-600 bg-red-50 border border-red-200"
-                }`}>
-                  {detail.status === "completed" ? "Completada" : "Cancelada"}
+      <Table>
+        <Table.Head>
+          <Table.Row>
+            <Table.Header>Recibo</Table.Header>
+            <Table.Header>Fecha</Table.Header>
+            <Table.Header className="hidden sm:table-cell">Productos</Table.Header>
+            <Table.Header className="text-right">Total</Table.Header>
+            <Table.Header>Estado</Table.Header>
+            <Table.Header>Acciones</Table.Header>
+          </Table.Row>
+        </Table.Head>
+        <Table.Body>
+          {sales.map((sale) => (
+            <Table.Row key={sale.id} className={`cursor-pointer ${detailId === sale.id ? "bg-indigo-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
+              <Table.Cell className="font-medium text-zinc-800">{sale.receiptNumber}</Table.Cell>
+              <Table.Cell className="text-xs text-zinc-500 whitespace-nowrap">
+                {new Date(sale.createdAt).toLocaleDateString()}{" "}
+                <span className="text-zinc-300">
+                  {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
-              </div>
-
-              <p className="text-xs text-zinc-400">Recibo: {detail.receiptNumber}</p>
-              <p className="text-xs text-zinc-400">
-                {(() => {
-                  const raw = detail.createdAt;
-                  if (!raw) return "";
-                  const d = new Date(raw);
-                  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
-                })()}
-              </p>
-
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-zinc-400 text-xs uppercase">
-                    <th className="text-left font-medium pb-1">Producto</th>
-                    <th className="text-center font-medium pb-1">Cant</th>
-                    <th className="text-right font-medium pb-1">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(detail.items || []).map((item) => (
-                    <tr key={item.id} className="border-t border-zinc-100">
-                      <td className="py-1.5 text-zinc-800">{item.product?.name || `#${item.productId}`}</td>
-                      <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
-                      <td className="py-1.5 text-right font-medium">${item.subtotal.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div className="border-t border-zinc-200 pt-3 space-y-1 text-sm">
-                <div className="flex justify-between text-zinc-500">
-                  <span>Subtotal</span>
-                  <span>${detail.subtotal?.toFixed(2)}</span>
-                </div>
-                {(detail.payments || []).map((p) => {
-                  const Icon = METHOD_ICON[p.paymentMethodId];
-                  return (
-                    <div key={p.id} className="flex justify-between text-zinc-500">
-                      <span className="flex items-center gap-1.5">
-                        {Icon && <Icon size={14} />}
-                        {METHOD_LABEL[p.paymentMethodId] || `Método #${p.paymentMethodId}`}
-                      </span>
-                      <span>${p.amount.toFixed(2)}</span>
-                    </div>
-                  );
-                })}
-                <div className="flex justify-between text-base font-bold text-zinc-800 pt-1 border-t border-zinc-100">
-                  <span>Total</span>
-                  <span>${detail.total?.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                {detail.status === "completed" && (
+              </Table.Cell>
+              <Table.Cell className="text-zinc-500 hidden sm:table-cell">{sale.items?.length ?? 0} artículos</Table.Cell>
+              <Table.Cell className="text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</Table.Cell>
+              <Table.Cell>
+                <Badge variant={sale.status === "completed" ? "success" : sale.status === "cancelled" ? "danger" : "warning"}>
+                  {sale.status === "completed" ? "Completada" : sale.status === "cancelled" ? "Cancelada" : sale.status}
+                </Badge>
+              </Table.Cell>
+              <Table.Cell>
+                {sale.status === "completed" && (
                   <button
-                    onClick={() => { setReceiptSale(detail); }}
-                    className="flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors"
+                    onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
+                    className="text-xs text-red-400 hover:text-red-600 transition-colors"
                   >
-                    Imprimir
+                    Cancelar
                   </button>
                 )}
-                <button
-                  onClick={() => { setDetail(null); setDetailId(null); }}
-                  className="flex-1 py-2.5 bg-zinc-100 text-zinc-600 rounded-xl text-sm font-medium hover:bg-zinc-200 transition-colors"
-                >
-                  Cerrar
-                </button>
+              </Table.Cell>
+            </Table.Row>
+          ))}
+          {sales.length === 0 && <Table.Empty colSpan={6}>No hay ventas registradas</Table.Empty>}
+        </Table.Body>
+      </Table>
+
+      <Modal open={!!detail} onClose={() => { setDetail(null); setDetailId(null); }} size="lg" className="max-w-lg p-0">
+        {detail && (
+          <div className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-zinc-800">Detalle de Venta</h2>
+              <Badge variant={detail.status === "completed" ? "success" : "danger"}>
+                {detail.status === "completed" ? "Completada" : "Cancelada"}
+              </Badge>
+            </div>
+
+            <p className="text-xs text-zinc-400">Recibo: {detail.receiptNumber}</p>
+            <p className="text-xs text-zinc-400">
+              {(() => {
+                const raw = detail.createdAt;
+                if (!raw) return "";
+                const d = new Date(raw);
+                return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
+              })()}
+            </p>
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-zinc-400 text-xs uppercase">
+                  <th className="text-left font-medium pb-1">Producto</th>
+                  <th className="text-center font-medium pb-1">Cant</th>
+                  <th className="text-right font-medium pb-1">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(detail.items || []).map((item) => (
+                  <tr key={item.id} className="border-t border-zinc-100">
+                    <td className="py-1.5 text-zinc-800">{item.product?.name || `#${item.productId}`}</td>
+                    <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
+                    <td className="py-1.5 text-right font-medium">${item.subtotal.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="border-t border-zinc-200 pt-3 space-y-1 text-sm">
+              <div className="flex justify-between text-zinc-500">
+                <span>Subtotal</span>
+                <span>${detail.subtotal?.toFixed(2)}</span>
+              </div>
+              {(detail.payments || []).map((p) => {
+                const Icon = METHOD_ICON[p.paymentMethodId];
+                return (
+                  <div key={p.id} className="flex justify-between text-zinc-500">
+                    <span className="flex items-center gap-1.5">
+                      {Icon && <Icon size={14} />}
+                      {METHOD_LABEL[p.paymentMethodId] || `Método #${p.paymentMethodId}`}
+                    </span>
+                    <span>${p.amount.toFixed(2)}</span>
+                  </div>
+                );
+              })}
+              <div className="flex justify-between text-base font-bold text-zinc-800 pt-1 border-t border-zinc-100">
+                <span>Total</span>
+                <span>${detail.total?.toFixed(2)}</span>
               </div>
             </div>
-          </dialog>
-        </div>
-      )}
+
+            <div className="flex gap-2 pt-2">
+              {detail.status === "completed" && (
+                <Button variant="dark" className="flex-1" onClick={() => { setReceiptSale(detail); }}>
+                  Imprimir
+                </Button>
+              )}
+              <Button variant="light" className="flex-1" onClick={() => { setDetail(null); setDetailId(null); }}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {receiptSale && <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />}
     </div>
