@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-pos-bg: #f4f7fb;
+  --color-pos-surface: #ffffff;
+  --color-pos-primary: #0f172a;
+  --color-pos-accent: #7c3aed;
+  --color-pos-danger: #ef4444;
+  --color-pos-success: #10b981;
+  --color-pos-warning: #f59e0b;
+  --color-pos-muted: #64748b;
+  --color-pos-border: #dbe4f0;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background:
+    radial-gradient(circle at top, rgba(125, 211, 252, 0.24), transparent 24%),
+    radial-gradient(circle at right top, rgba(167, 139, 250, 0.16), transparent 20%),
+    linear-gradient(180deg, #f8fbff 0%, #f4f7fb 48%, #eef4fb 100%);
+  color: #0f172a;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+::selection {
+  background: rgba(124, 58, 237, 0.18);
+}

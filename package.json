@@ -1,0 +1,33 @@
+{
+  "name": "pos-system",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build:frontend": "cd frontend && bun run build",
+    "deploy": "bun run build:frontend && wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply pos-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply pos-db --remote",
+    "db:seed:local": "wrangler d1 execute pos-db --local --file=./src/db/seed.sql",
+    "db:seed:remote": "wrangler d1 execute pos-db --remote --file=./src/db/seed.sql",
+    "db:triggers:local": "wrangler d1 execute pos-db --local --file=./src/db/triggers.sql",
+    "db:triggers:remote": "wrangler d1 execute pos-db --remote --file=./src/db/triggers.sql",
+    "cf-typegen": "wrangler types",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.8.0",
+    "drizzle-orm": "^0.41.0",
+    "hono": "^4.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250201.0",
+    "@types/node": "^25.9.1",
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  }
+}
