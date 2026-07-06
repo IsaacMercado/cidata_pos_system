@@ -1,0 +1,1 @@
+[   26018ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:8787/api/sales/16/pay:0

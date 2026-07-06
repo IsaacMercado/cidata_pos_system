@@ -1,0 +1,109 @@
+- generic [ref=f14e3]:
+  - complementary [ref=f14e4]:
+    - generic [ref=f14e5]:
+      - generic [ref=f14e6]: P
+      - generic [ref=f14e7]:
+        - heading "pos-system" [level=1] [ref=f14e8]
+        - paragraph [ref=f14e9]: Punto de Venta
+    - navigation [ref=f14e10]:
+      - link "⊞ POS" [ref=f14e11] [cursor=pointer]:
+        - /url: /
+        - generic [ref=f14e12]: ⊞
+        - text: POS
+      - link "■ Productos" [ref=f14e13] [cursor=pointer]:
+        - /url: /products
+        - generic [ref=f14e14]: ■
+        - text: Productos
+      - link "● Clientes" [ref=f14e15] [cursor=pointer]:
+        - /url: /customers
+        - generic [ref=f14e16]: ●
+        - text: Clientes
+      - link "≡ Ventas" [ref=f14e17] [cursor=pointer]:
+        - /url: /sales
+        - generic [ref=f14e18]: ≡
+        - text: Ventas
+      - link "◉ Restaurante" [ref=f14e19] [cursor=pointer]:
+        - /url: /restaurants
+        - generic [ref=f14e20]: ◉
+        - text: Restaurante
+    - button "Iniciar Sesión" [ref=f14e22]
+  - main [ref=f14e23]:
+    - generic [ref=f14e24]:
+      - generic [ref=f14e28]:
+        - generic [ref=f14e29]:
+          - generic [ref=f14e30]:
+            - generic [ref=f14e31]: 🔍
+            - textbox "Buscar producto..." [ref=f14e32]
+          - combobox [ref=f14e33]:
+            - option "Todas" [selected]
+        - generic [ref=f14e34]:
+          - button "📦 Agua Mineral 500ml $1.00" [ref=f14e35]:
+            - generic [ref=f14e36]: 📦
+            - generic [ref=f14e37]: Agua Mineral 500ml
+            - generic [ref=f14e38]: $1.00
+          - button "📦 Arroz 1kg $1.20" [ref=f14e39]:
+            - generic [ref=f14e40]: 📦
+            - generic [ref=f14e41]: Arroz 1kg
+            - generic [ref=f14e42]: $1.20
+          - button "📦 Detergente Líquido 1L $3.50" [ref=f14e43]:
+            - generic [ref=f14e44]: 📦
+            - generic [ref=f14e45]: Detergente Líquido 1L
+            - generic [ref=f14e46]: $3.50
+          - button "📦 Jugo de Naranja 1L $2.00" [ref=f14e47]:
+            - generic [ref=f14e48]: 📦
+            - generic [ref=f14e49]: Jugo de Naranja 1L
+            - generic [ref=f14e50]: $2.00
+          - button "📦 Leche Entera 1L $1.80" [ref=f14e51]:
+            - generic [ref=f14e52]: 📦
+            - generic [ref=f14e53]: Leche Entera 1L
+            - generic [ref=f14e54]: $1.80
+          - button "📦 Pan de Molde $2.50" [ref=f14e55]:
+            - generic [ref=f14e56]: 📦
+            - generic [ref=f14e57]: Pan de Molde
+            - generic [ref=f14e58]: $2.50
+          - button "📦 Queso Amarillo 500g $4.00" [ref=f14e59]:
+            - generic [ref=f14e60]: 📦
+            - generic [ref=f14e61]: Queso Amarillo 500g
+            - generic [ref=f14e62]: $4.00
+          - button "📦 Refresco Cola 355ml $1.50" [active] [ref=f14e63]:
+            - generic [ref=f14e64]: 📦
+            - generic [ref=f14e65]: Refresco Cola 355ml
+            - generic [ref=f14e66]: $1.50
+      - generic [ref=f14e67]:
+        - heading "🛒 Carrito 1" [level=2] [ref=f14e94]:
+          - text: 🛒 Carrito
+          - generic [ref=f14e95]: "1"
+        - generic [ref=f14e96]:
+          - generic [ref=f14e97]: 📦
+          - generic [ref=f14e98]:
+            - paragraph [ref=f14e99]: Refresco Cola 355ml
+            - paragraph [ref=f14e100]: $1.50 c/u
+          - generic [ref=f14e101]:
+            - button "−" [ref=f14e102]
+            - generic [ref=f14e103]: "1"
+            - button "+" [ref=f14e104]
+        - generic [ref=f14e75]:
+          - generic [ref=f14e76]:
+            - generic [ref=f14e77]:
+              - paragraph [ref=f14e78]: Pagos
+              - button "+ Agregar pago" [ref=f14e79]
+            - generic [ref=f14e81]:
+              - combobox [ref=f14e82]:
+                - option "💰 Efectivo" [selected]
+                - option "💳 Tarjeta"
+                - option "🏦 Transferencia"
+                - option "📱 Pago Móvil"
+              - generic [ref=f14e83]:
+                - generic [ref=f14e84]: $
+                - spinbutton "0.00" [ref=f14e85]
+          - generic [ref=f14e86]:
+            - generic [ref=f14e87]:
+              - generic [ref=f14e88]: Total
+              - generic [ref=f14e89]: $1.50
+            - generic [ref=f14e90]:
+              - generic [ref=f14e91]: Pagado
+              - generic [ref=f14e92]: $0.00
+            - generic [ref=f14e105]:
+              - generic [ref=f14e106]: Restante
+              - generic [ref=f14e107]: $1.50
+          - button "Cobrar" [disabled] [ref=f14e93]

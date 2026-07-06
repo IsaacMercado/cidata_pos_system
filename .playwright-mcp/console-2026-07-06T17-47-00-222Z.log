@@ -1,0 +1,10 @@
+[      77ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8787/api/products:0
+[      79ms] TypeError: Failed to fetch
+    at T (http://localhost:8787/assets/index-CHBYAg5P.js:1:19140)
+    at Object.list (http://localhost:8787/assets/index-CHBYAg5P.js:1:19322)
+    at Object.__ (http://localhost:8787/assets/index-CHBYAg5P.js:1:30850)
+    at kn (http://localhost:8787/assets/index-CHBYAg5P.js:1:15263)
+    at Array.some (<anonymous>)
+    at Lt (http://localhost:8787/assets/index-CHBYAg5P.js:1:14062)
+[      79ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8787/icon-192.png:0
+[      79ms] [WARNING] Error while trying to use the following icon from the Manifest: http://localhost:8787/icon-192.png (Download error or resource isn't a valid image) @ http://localhost:8787/:0

@@ -20,7 +20,9 @@ const createSchema = z.object({
   minStock: z.number().min(0).default(0),
 });
 
-const updateSchema = createSchema.partial();
+const updateSchema = createSchema.partial().extend({
+  isActive: z.number().min(0).max(1).optional(),
+});
 
 app.get("/", async (c) => {
   const db = c.get("db");

@@ -1,0 +1,27 @@
+- generic [ref=f4e3]:
+  - complementary [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - generic [ref=f4e6]: P
+      - generic [ref=f4e7]:
+        - heading "pos-system" [level=1] [ref=f4e8]
+        - paragraph [ref=f4e9]: Punto de Venta
+    - navigation [ref=f4e10]:
+      - link "⊞ POS" [ref=f4e11] [cursor=pointer]:
+        - /url: /
+        - generic [ref=f4e12]: ⊞
+        - text: POS
+      - link "■ Productos" [ref=f4e13] [cursor=pointer]:
+        - /url: /products
+        - generic [ref=f4e14]: ■
+        - text: Productos
+      - link "● Clientes" [ref=f4e15] [cursor=pointer]:
+        - /url: /customers
+        - generic [ref=f4e16]: ●
+        - text: Clientes
+      - link "≡ Ventas" [ref=f4e17] [cursor=pointer]:
+        - /url: /sales
+        - generic [ref=f4e18]: ≡
+        - text: Ventas
+    - button "Iniciar Sesión" [ref=f4e20]
+  - main [ref=f4e21]:
+    - generic [ref=f4e25]: Cargando...

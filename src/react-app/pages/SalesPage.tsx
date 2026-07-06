@@ -1,131 +1,206 @@
 import { useState, useEffect } from "preact/hooks";
 import { api } from "../lib/api";
-import { getCachedSales, cacheSale } from "../lib/db";
-import { useOnlineStatus } from "../lib/useOnlineStatus";
-
-const statusStyle: Record<string, string> = {
-  completed: "bg-emerald-100 text-emerald-700",
-  cancelled: "bg-red-100 text-red-700",
-  refunded: "bg-amber-100 text-amber-700",
-  in_progress: "bg-blue-100 text-blue-700",
+import { ReceiptModal } from "../components/pos/ReceiptModal";
+import { useToast } from "../components/pos/Toast";
+const METHOD_LABEL: Record<number, string> = {
+  1: "💰 Efectivo",
+  2: "💳 Tarjeta",
+  3: "🏦 Transferencia",
+  4: "📱 Pago Móvil",
 };
 
 export function SalesPage() {
-  const [list, setList] = useState<any[]>([]);
-  const [selected, setSelected] = useState<any | null>(null);
-  const online = useOnlineStatus();
+  const [sales, setSales] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [receiptSale, setReceiptSale] = useState<any | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<any | null>(null);
+  const { toast } = useToast();
+
+  async function load() {
+    const data = await api.sales.list();
+    setSales(data || []);
+    setLoading(false);
+  }
 
   useEffect(() => { load(); }, []);
 
-  async function load() {
-    if (online) {
-      try {
-        const data = await api.sales.list({ limit: 100 });
-        for (const s of data) await cacheSale(s);
-        setList(data);
-        return;
-      } catch {}
-    }
-    setList(await getCachedSales());
-  }
-
-  async function cancel(id: number) {
-    if (!online || !confirm("¿Anular esta venta?")) return;
-    await api.sales.cancel(id);
-    await load();
-  }
-
   async function showDetail(id: number) {
-    if (online) {
-      const sale = await api.sales.get(id);
-      setSelected(sale);
+    setDetailId(id);
+    try {
+      const data = await api.sales.get(id);
+      setDetail(data);
+    } catch {
+      toast("Error al cargar detalle", "error");
     }
   }
 
-  if (selected) {
+  async function cancelSale(id: number) {
+    try {
+      await api.sales.cancel(id);
+      toast("Venta cancelada", "success");
+      setDetail(null);
+      setDetailId(null);
+      await load();
+    } catch {
+      toast("Error al cancelar", "error");
+    }
+  }
+
+  if (loading) {
     return (
-      <div>
-        <button className="mb-3 flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700" onClick={() => setSelected(null)}>
-          <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-          Volver
-        </button>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-bold text-base">Venta {selected.receiptNumber}</h3>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusStyle[selected.status] || "bg-slate-100 text-slate-600"}`}>
-              {selected.status}
-            </span>
-          </div>
-          <div className="mb-2 text-xs text-slate-400">{new Date(selected.createdAt).toLocaleString()}</div>
-          <div className="text-sm">Total: <strong className="text-base">${selected.total.toFixed(2)}</strong></div>
-          {selected.items && selected.items.length > 0 && (
-            <table className="mt-3 w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-[0.65rem] font-semibold uppercase text-slate-500">
-                  <th className="pb-1 pr-2">Producto</th>
-                  <th className="pb-1 pr-2">Cant</th>
-                  <th className="pb-1 pr-2">Precio</th>
-                  <th className="pb-1 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selected.items.map((i: any) => (
-                  <tr key={i.id} className="border-b border-slate-50">
-                    <td className="py-1 pr-2">{i.productId}</td>
-                    <td className="py-1 pr-2">{i.quantity}</td>
-                    <td className="py-1 pr-2">${i.unitPrice.toFixed(2)}</td>
-                    <td className="py-1 text-right">${i.total.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      <div className="flex items-center justify-center h-full text-zinc-400 py-12">
+        <div className="animate-pulse text-sm">Cargando...</div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-800">Ventas</h2>
-        <button className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white transition" onClick={load}>
-          <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-          Recargar
-        </button>
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <h1 className="text-xl font-bold text-zinc-800 mb-6 flex items-center gap-2">
+        <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center text-white text-xs">≡</span>
+        Historial de Ventas
+      </h1>
+
+      <div className="overflow-hidden border border-zinc-200 rounded-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-zinc-50 text-left">
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Recibo</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Fecha</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider hidden sm:table-cell">Productos</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider text-right">Total</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Estado</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sales.map((sale: any) => (
+                <tr key={sale.id} className={`border-t border-zinc-100 hover:bg-indigo-50/30 transition-colors cursor-pointer ${detailId === sale.id ? "bg-indigo-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
+                  <td className="px-4 py-3 font-medium text-zinc-800">{sale.receipt_number}</td>
+                  <td className="px-4 py-3 text-xs text-zinc-500 whitespace-nowrap">
+{new Date(sale.createdAt).toLocaleDateString()}{" "}
+            <span className="text-zinc-300">
+              {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-500 hidden sm:table-cell">{sale.items?.length ?? 0} artículos</td>
+                  <td className="px-4 py-3 text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      sale.status === "completed"
+                        ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                        : sale.status === "cancelled"
+                        ? "text-red-600 bg-red-50 border border-red-200"
+                        : "text-amber-600 bg-amber-50 border border-amber-200"
+                    }`}>
+                      {sale.status === "completed" ? "Completada" : sale.status === "cancelled" ? "Cancelada" : sale.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {sale.status === "completed" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {sales.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-zinc-400">No hay ventas registradas</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="space-y-2">
-        {list.map((s: any) => (
-          <div
-            key={s.id}
-            className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md"
-            onClick={() => showDetail(s.id)}
-          >
+      {/* Detail modal */}
+      {detail && (
+        <dialog
+          open
+          className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-full max-w-lg m-auto"
+          onClick={() => { setDetail(null); setDetailId(null); }}
+        >
+          <div className="p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-sm">{s.receiptNumber}</div>
-                <div className="text-xs text-slate-400">{new Date(s.createdAt).toLocaleDateString()}</div>
+              <h2 className="text-lg font-bold text-zinc-800">Detalle de Venta</h2>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                detail.status === "completed"
+                  ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                  : "text-red-600 bg-red-50 border border-red-200"
+              }`}>
+                {detail.status === "completed" ? "Completada" : "Cancelada"}
+              </span>
+            </div>
+
+            <p className="text-xs text-zinc-400">Recibo: {detail.receipt_number}</p>
+            <p className="text-xs text-zinc-400">
+              {new Date(detail.createdAt).toLocaleString()}
+            </p>
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-zinc-400 text-xs uppercase">
+                  <th className="text-left font-medium pb-1">Producto</th>
+                  <th className="text-center font-medium pb-1">Cant</th>
+                  <th className="text-right font-medium pb-1">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(detail.items || []).map((item: any) => (
+                  <tr key={item.id} className="border-t border-zinc-100">
+                    <td className="py-1.5 text-zinc-800">{item.name || `#${item.productId}`}</td>
+                    <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
+                    <td className="py-1.5 text-right font-medium">${item.subtotal.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="border-t border-zinc-200 pt-3 space-y-1 text-sm">
+              <div className="flex justify-between text-zinc-500">
+                <span>Subtotal</span>
+                <span>${detail.subtotal?.toFixed(2)}</span>
               </div>
-              <div className="text-right">
-                <div className="font-bold">${s.total.toFixed(2)}</div>
-                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${statusStyle[s.status] || "bg-slate-100 text-slate-600"}`}>
-                  {s.status === "in_progress" ? "En mesa" : s.status}
-                </span>
+              {(detail.payments || []).map((p: any) => (
+                <div key={p.id} className="flex justify-between text-zinc-500">
+                  <span>{METHOD_LABEL[p.paymentMethodId] || `Método #${p.paymentMethodId}`}</span>
+                  <span>${p.amount.toFixed(2)}</span>
+                </div>
+              ))}
+              <div className="flex justify-between text-base font-bold text-zinc-800 pt-1 border-t border-zinc-100">
+                <span>Total</span>
+                <span>${detail.total?.toFixed(2)}</span>
               </div>
             </div>
-            {s.status === "completed" && (
+
+            <div className="flex gap-2 pt-2">
+              {detail.status === "completed" && (
+                <button
+                  onClick={() => { setReceiptSale(detail); }}
+                  className="flex-1 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors"
+                >
+                  Imprimir
+                </button>
+              )}
               <button
-                className="mt-2 rounded px-2 py-0.5 text-xs font-medium text-red-500 hover:bg-red-50 transition"
-                onClick={(e) => { e.stopPropagation(); cancel(s.id); }}
+                onClick={() => { setDetail(null); setDetailId(null); }}
+                className="flex-1 py-2.5 bg-zinc-100 text-zinc-600 rounded-xl text-sm font-medium hover:bg-zinc-200 transition-colors"
               >
-                Anular
+                Cerrar
               </button>
-            )}
+            </div>
           </div>
-        ))}
-        {list.length === 0 && <div className="py-10 text-center text-sm text-slate-400">No hay ventas</div>}
-      </div>
+        </dialog>
+      )}
+
+      {receiptSale && <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />}
     </div>
   );
 }

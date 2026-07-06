@@ -1,116 +1,235 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import { api } from "../lib/api";
-import { cacheProducts, getCachedProducts, addPendingOp } from "../lib/db";
-import { useOnlineStatus } from "../lib/useOnlineStatus";
+import { useToast } from "../components/pos/Toast";
+
+function categoryEmoji(name: string) {
+  const map: Record<string, string> = {
+    Bebidas: "☕", Alimentos: "🥪", Snacks: "🍿", Lácteos: "🥛", Limpieza: "🧹",
+  };
+  return map[name] || "📦";
+}
 
 export function ProductsPage() {
-  const [list, setList] = useState<any[]>([]);
-  const [search, setSearch] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ code: "", name: "", price: 0, cost: 0, minStock: 0 });
-  const [editing, setEditing] = useState<number | null>(null);
-  const online = useOnlineStatus();
+  const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const { toast } = useToast();
+
+  async function load() {
+    const data = await api.products.list();
+    setProducts(data || []);
+    setCategories([]);
+    setLoading(false);
+  }
 
   useEffect(() => { load(); }, []);
 
-  async function load() {
-    if (online) {
-      try { const data = await api.products.list({}); await cacheProducts(data); setList(data); return; } catch {}
-    }
-    setList(await getCachedProducts());
-  }
-
-  const filtered = search
-    ? list.filter((p: any) => p.name?.toLowerCase().includes(search.toLowerCase()) || p.code?.toLowerCase().includes(search.toLowerCase()))
-    : list;
-
   async function save(e: Event) {
     e.preventDefault();
-    if (editing) {
-      if (online) await api.products.update(editing, form);
-      else await addPendingOp({ type: "update_product", payload: { id: editing, data: form } });
-    } else {
-      if (online) await api.products.create(form);
+    const fd = new FormData(e.target as HTMLFormElement);
+    try {
+      await api.products.create({
+        code: (fd.get("code") as string) || `PROD-${Date.now()}`,
+        name: fd.get("name") as string,
+        price: parseFloat(fd.get("price") as string),
+        cost: parseFloat((fd.get("cost") as string) || "0"),
+        categoryId: parseInt(fd.get("category_id") as string) || undefined,
+        description: (fd.get("description") as string) || undefined,
+        currentStock: parseInt((fd.get("stock") as string) || "0"),
+      });
+      dialog.current?.close();
+      toast("Producto creado", "success");
+      await load();
+    } catch {
+      toast("Error al crear producto", "error");
     }
-    setShowForm(false); setEditing(null); setForm({ code: "", name: "", price: 0, cost: 0, minStock: 0 });
-    await load();
   }
 
-  function edit(p: any) {
-    setForm({ code: p.code, name: p.name, price: p.price, cost: p.cost, minStock: p.minStock });
-    setEditing(p.id); setShowForm(true);
+  async function toggleActive(product: any) {
+    try {
+      await api.products.update(product.id, { isActive: product.isActive ? 0 : 1 });
+      toast(product.isActive ? "Producto desactivado" : "Producto activado", "success");
+      await load();
+    } catch {
+      toast("Error al actualizar", "error");
+    }
   }
 
   async function remove(id: number) {
-    if (!confirm("¿Desactivar este producto?")) return;
-    if (online) await api.products.deactivate(id);
-    await load();
+    try {
+      await api.products.deactivate(id);
+      toast("Producto eliminado", "success");
+      await load();
+    } catch {
+      toast("Error al eliminar", "error");
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-zinc-400 py-12">
+        <div className="animate-pulse text-sm">Cargando...</div>
+      </div>
+    );
   }
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-800">Productos</h2>
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-bold text-zinc-800 flex items-center gap-2">
+          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-500 flex items-center justify-center text-white text-xs">■</span>
+          Productos
+        </h1>
         <button
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-            showForm ? "bg-slate-200 text-slate-600" : "bg-blue-600 text-white hover:bg-blue-700"
-          }`}
-          onClick={() => { setShowForm(!showForm); setEditing(null); setForm({ code: "", name: "", price: 0, cost: 0, minStock: 0 }); }}
+          onClick={() => dialog.current?.showModal()}
+          className="px-4 py-1.5 bg-zinc-900 text-white text-sm rounded hover:bg-zinc-800 transition-colors"
         >
-          {showForm ? "Cancelar" : "+ Nuevo"}
+          + Nuevo
         </button>
       </div>
 
-      {showForm && (
-        <form className="mb-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" onSubmit={save}>
-          <div className="grid grid-cols-2 gap-2">
-            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" placeholder="Código" value={form.code} onInput={(e: any) => setForm({ ...form, code: e.target.value })} required />
-            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" placeholder="Nombre" value={form.name} onInput={(e: any) => setForm({ ...form, name: e.target.value })} required />
-            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" type="number" step="0.01" placeholder="Precio" value={form.price || ""} onInput={(e: any) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} required />
-            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" type="number" step="0.01" placeholder="Costo" value={form.cost || ""} onInput={(e: any) => setForm({ ...form, cost: parseFloat(e.target.value) || 0 })} />
-            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15" type="number" placeholder="Stock mínimo" value={form.minStock || ""} onInput={(e: any) => setForm({ ...form, minStock: parseFloat(e.target.value) || 0 })} />
-          </div>
-          <button className="mt-3 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition">{editing ? "Actualizar" : "Crear"} Producto</button>
-        </form>
-      )}
-
-      <input
-        className="mb-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15"
-        placeholder="Buscar productos..."
-        value={search}
-        onInput={(e: any) => setSearch(e.target.value)}
-      />
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50 text-left text-[0.65rem] font-semibold uppercase tracking-wider text-slate-500">
-              {["Código", "Nombre", "Precio", "Stock", "Acción"].map((h) => <th key={h} className="px-3 py-2">{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((p: any) => (
-              <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-3 py-2 text-slate-500">{p.code}</td>
-                <td className="px-3 py-2 font-medium">{p.name}</td>
-                <td className="px-3 py-2 font-semibold">${p.price.toFixed(2)}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${
-                    p.currentStock <= p.minStock ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
-                  }`}>
-                    {p.currentStock} {p.unit}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <button className="mr-1 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50" onClick={() => edit(p)}>Editar</button>
-                  <button className="rounded px-2 py-0.5 text-xs font-medium text-red-500 hover:bg-red-50" onClick={() => remove(p.id)}>Eliminar</button>
-                </td>
+      <div className="overflow-hidden border border-zinc-200 rounded-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-zinc-50 text-left">
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Nombre</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider hidden sm:table-cell">SKU</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider hidden md:table-cell">Categoría</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider text-right">Precio</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider text-right">Stock</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Estado</th>
+                <th className="px-4 py-3 font-medium text-zinc-500 text-xs uppercase tracking-wider">Acciones</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && <div className="py-10 text-center text-sm text-slate-400">No hay productos</div>}
+            </thead>
+            <tbody>
+              {products.map((p: any) => (
+                <tr key={p.id} className="border-t border-zinc-100 hover:bg-indigo-50/30 transition-colors">
+                  <td className="px-4 py-3 font-medium text-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center text-xs flex-shrink-0">
+                        {p.category ? categoryEmoji(p.category.name) : "📦"}
+                      </span>
+                      {p.name}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-zinc-400 text-xs hidden sm:table-cell">{p.code || "—"}</td>
+                  <td className="px-4 py-3 text-zinc-500 hidden md:table-cell">
+                    {p.category?.name && (
+                      <span className="bg-zinc-100 text-zinc-600 text-[10px] px-2 py-0.5 rounded-full">{p.category.name}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-zinc-800">${p.price.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`font-medium text-sm ${p.currentStock <= 5 ? "text-amber-600" : p.currentStock === 0 ? "text-red-500" : "text-zinc-800"}`}>
+                      {p.currentStock}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => toggleActive(p)}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
+                        p.isActive
+                          ? "text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
+                          : "text-zinc-400 border-zinc-200 bg-zinc-50 hover:bg-zinc-100"
+                      }`}
+                    >
+                      {p.isActive ? "Activo" : "Inactivo"}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => remove(p.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {products.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-zinc-400">No hay productos</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      <dialog
+        ref={dialog}
+        className="rounded-lg shadow-xl border border-zinc-200 p-0 backdrop:bg-black/30 w-full max-w-md m-auto"
+      >
+        <form onSubmit={save} className="p-5 space-y-4">
+          <h2 className="text-lg font-bold">Nuevo Producto</h2>
+
+          <label className="block">
+            <span className="text-sm text-zinc-500">Nombre</span>
+            <input name="name" required
+              className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+            />
+          </label>
+
+          <div className="flex gap-3">
+            <label className="flex-1">
+              <span className="text-sm text-zinc-500">Precio</span>
+              <input name="price" type="number" step="0.01" required
+                className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+              />
+            </label>
+            <label className="flex-1">
+              <span className="text-sm text-zinc-500">Costo</span>
+              <input name="cost" type="number" step="0.01"
+                className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+              />
+            </label>
+          </div>
+
+          <div className="flex gap-3">
+            <label className="flex-1">
+              <span className="text-sm text-zinc-500">Código</span>
+              <input name="code"
+                className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+              />
+            </label>
+            <label className="flex-1">
+              <span className="text-sm text-zinc-500">Stock</span>
+              <input name="stock" type="number"
+                className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="text-sm text-zinc-500">Categoría</span>
+            <select name="category_id"
+              className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+            >
+              <option value="">Sin categoría</option>
+              {categories.map((c: any) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm text-zinc-500">Descripción</span>
+            <textarea name="description" rows={2}
+              className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+            />
+          </label>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <button type="button" onClick={() => dialog.current?.close()}
+              className="px-4 py-1.5 text-sm text-zinc-600 hover:text-zinc-900"
+            >
+              Cancelar
+            </button>
+            <button className="px-4 py-1.5 bg-zinc-900 text-white text-sm rounded hover:bg-zinc-800">
+              Guardar
+            </button>
+          </div>
+        </form>
+      </dialog>
     </div>
   );
 }
