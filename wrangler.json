@@ -1,0 +1,25 @@
+{
+  "name": "pos-system",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2025-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pos-db",
+      "database_id": "your-database-id-here",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "JWT_SECRET": "your-jwt-secret-here"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

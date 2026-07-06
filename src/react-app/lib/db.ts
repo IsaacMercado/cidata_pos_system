@@ -28,10 +28,6 @@ interface StoreSchema {
       retries: number;
     };
   };
-  sync_meta: {
-    key: string;
-    value: { lastSyncAt: string; etag?: string };
-  };
 }
 
 let dbPromise: Promise<IDBPDatabase<StoreSchema>> | null = null;
@@ -57,9 +53,6 @@ function getDb() {
             keyPath: "id",
             autoIncrement: true,
           });
-        }
-        if (!db.objectStoreNames.contains("sync_meta")) {
-          db.createObjectStore("sync_meta", { keyPath: "key" });
         }
         if (!db.objectStoreNames.contains("restaurants")) {
           db.createObjectStore("restaurants", { keyPath: "id" });
@@ -167,18 +160,6 @@ export async function getCachedSales() {
   return db.getAll("sales");
 }
 
-// ─── Sync meta ─────────────────────────────────────────────────────────────
-
-export async function setSyncMeta(key: string, value: { lastSyncAt: string; etag?: string }) {
-  const db = await getDb();
-  await db.put("sync_meta", { key, ...value });
-}
-
-export async function getSyncMeta(key: string) {
-  const db = await getDb();
-  return db.get("sync_meta", key);
-}
-
 // ─── Restaurants cache ─────────────────────────────────────────────────────
 
 export async function cacheRestaurants(restaurants: any[]) {
@@ -198,7 +179,7 @@ export async function getCachedRestaurant(id: number): Promise<any | undefined> 
   return db.get("restaurants", id);
 }
 
-export async function cacheRestaurantTables(restaurantId: number, tables: any[]) {
+export async function cacheRestaurantTables(_restaurantId: number, tables: any[]) {
   const db = await getDb();
   const tx = db.transaction("restaurant_tables", "readwrite");
   for (const t of tables) await tx.store.put(t);

@@ -95,11 +95,14 @@ export const api = {
       request<any>(`/restaurants/${restaurantId}/tables/${tableId}`, { method: "DELETE" }),
   },
 
-  // Sync
-  sync: {
-    start: () => request<any>("/sync/start", { method: "POST" }),
-    pullProducts: () => request<any>("/sync/pull/products", { method: "POST" }),
-    pullCustomers: () => request<any>("/sync/pull/customers", { method: "POST" }),
-    log: () => request<any[]>("/sync/log"),
+  // Auth
+  auth: {
+    login: (data: { email: string; password: string }) =>
+      request<{ user: any; token: string }>("/login", { method: "POST", body: JSON.stringify(data) }),
+
+    register: (data: { email: string; username: string; password: string }) =>
+      request<any>("/register", { method: "POST", body: JSON.stringify(data) }),
+
+    me: () => request<any>("/users/me"),
   },
 };

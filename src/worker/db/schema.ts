@@ -14,7 +14,6 @@ export const categories = sqliteTable("categories", {
   description: text("description"),
   parentId: integer("parent_id").references((): any => categories.id),
   isActive: integer("is_active").notNull().default(1),
-  odooId: integer("odoo_id"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -34,7 +33,6 @@ export const products = sqliteTable("products", {
   minStock: real("min_stock").notNull().default(0),
   currentStock: real("current_stock").notNull().default(0),
   isActive: integer("is_active").notNull().default(1),
-  odooId: integer("odoo_id"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -52,7 +50,6 @@ export const customers = sqliteTable("customers", {
   isActive: integer("is_active").notNull().default(1),
   creditLimit: real("credit_limit").notNull().default(0),
   currentBalance: real("current_balance").notNull().default(0),
-  odooId: integer("odoo_id"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -63,9 +60,10 @@ export const users = sqliteTable("users", {
   username: text("username").notNull().unique(),
   name: text("name").notNull(),
   pin: text("pin").notNull(),
+  email: text("email").unique(),
+  passwordHash: text("password_hash"),
   role: text("role").notNull().default("cashier"),
   isActive: integer("is_active").notNull().default(1),
-  odooId: integer("odoo_id"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -76,7 +74,6 @@ export const paymentMethods = sqliteTable("payment_methods", {
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   isActive: integer("is_active").notNull().default(1),
-  odooId: integer("odoo_id"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
@@ -95,8 +92,6 @@ export const sales = sqliteTable("sales", {
   paymentMethodId: integer("payment_method_id").references(() => paymentMethods.id),
   status: text("status").notNull().default("completed"),
   notes: text("notes"),
-  odooId: integer("odoo_id"),
-  syncStatus: text("sync_status").notNull().default("pending"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -126,22 +121,7 @@ export const inventoryMovements = sqliteTable("inventory_movements", {
   referenceId: integer("reference_id"),
   notes: text("notes"),
   userId: integer("user_id").references(() => users.id),
-  odooId: integer("odoo_id"),
-  syncStatus: text("sync_status").notNull().default("pending"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-});
-
-// ─── Sync Log ────────────────────────────────────────────────────────────────
-export const syncLog = sqliteTable("sync_log", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  entityType: text("entity_type").notNull(),
-  entityId: integer("entity_id").notNull(),
-  action: text("action").notNull(),
-  status: text("status").notNull().default("pending"),
-  errorMessage: text("error_message"),
-  odooResponse: text("odoo_response"),
-  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-  syncedAt: text("synced_at"),
 });
 
 // ─── Low Stock Alerts ────────────────────────────────────────────────────────
