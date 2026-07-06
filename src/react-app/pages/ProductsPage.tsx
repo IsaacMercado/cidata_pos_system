@@ -1,9 +1,9 @@
-import { Coffee, Milk, Package, Plus, Popcorn, Sandwich, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { Coffee, Milk, Package, Plus, Popcorn, Sandwich, Sparkles, Trash2, Pencil } from "lucide-react";
+import { useEffect, useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { useToast } from "../components/pos/Toast";
 import { api } from "../lib/api";
-import { Badge, Button, Input, Loading, PageHeader, Select, Table } from "../components/ui";
+import { Badge, Button, Input, Loading, Modal, PageHeader, Select, Table } from "../components/ui";
 
 const CATEGORY_ICONS: Record<string, typeof Coffee> = {
   Bebidas: Coffee,
@@ -33,7 +33,8 @@ export function ProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const { toast } = useToast();
 
   const { register, handleSubmit, reset } = useForm<FormData>({
@@ -57,25 +58,62 @@ export function ProductsPage() {
 
   useEffect(() => { load(); }, []);
 
+  function openNew() {
+    setEditingProduct(null);
+    reset({ code: "", name: "", price: 0, cost: 0, categoryId: undefined, description: undefined, currentStock: 0 });
+    setModalOpen(true);
+  }
+
+  function openEdit(product: any) {
+    setEditingProduct(product);
+    reset({
+      code: product.code || "",
+      name: product.name || "",
+      price: product.price || 0,
+      cost: product.cost || 0,
+      categoryId: product.categoryId || undefined,
+      description: product.description || undefined,
+      currentStock: product.currentStock || 0,
+    });
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditingProduct(null);
+  }
+
   const onSubmit: SubmitHandler<FormData> = async (data) => {
     try {
-      await api.products.create({
-        code: data.code || `PROD-${Date.now()}`,
-        name: data.name,
-        price: data.price,
-        cost: data.cost || 0,
-        categoryId: data.categoryId || undefined,
-        description: data.description || undefined,
-        currentStock: data.currentStock || 0,
-      });
-      dialog.current?.close();
-      reset();
-      toast("Producto creado", "success");
+      if (editingProduct) {
+        await api.products.update(editingProduct.id, {
+          code: data.code,
+          name: data.name,
+          price: data.price,
+          cost: data.cost || 0,
+          categoryId: data.categoryId || undefined,
+          description: data.description || undefined,
+          currentStock: data.currentStock || 0,
+        });
+        toast("Producto actualizado", "success");
+      } else {
+        await api.products.create({
+          code: data.code || `PROD-${Date.now()}`,
+          name: data.name,
+          price: data.price,
+          cost: data.cost || 0,
+          categoryId: data.categoryId || undefined,
+          description: data.description || undefined,
+          currentStock: data.currentStock || 0,
+        });
+        toast("Producto creado", "success");
+      }
+      closeModal();
       await load();
     } catch {
-      toast("Error al crear producto", "error");
+      toast(editingProduct ? "Error al actualizar" : "Error al crear producto", "error");
     }
-  }
+  };
 
   async function toggleActive(product: any) {
     try {
@@ -105,7 +143,7 @@ export function ProductsPage() {
         title="Productos"
         icon={Package}
         action={
-          <Button onClick={() => dialog.current?.showModal()}>
+          <Button onClick={openNew}>
             <Plus size={14} /> Nuevo
           </Button>
         }
@@ -157,10 +195,16 @@ export function ProductsPage() {
                 </button>
               </Table.Cell>
               <Table.Cell>
-                <button onClick={() => remove(p.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
-                  <Trash2 size={12} />
-                  Eliminar
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => openEdit(p)} className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors flex items-center gap-1">
+                    <Pencil size={12} />
+                    Editar
+                  </button>
+                  <button onClick={() => remove(p.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
+                    <Trash2 size={12} />
+                    Eliminar
+                  </button>
+                </div>
               </Table.Cell>
             </Table.Row>
           ))}
@@ -168,12 +212,9 @@ export function ProductsPage() {
         </Table.Body>
       </Table>
 
-      <dialog
-        ref={dialog}
-        className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-[calc(100%-2rem)] max-w-md bg-white max-h-[90dvh] overflow-y-auto"
-      >
-        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
-          <h2 className="text-lg font-bold">Nuevo Producto</h2>
+      <Modal open={modalOpen} onClose={closeModal} size="sm">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <h2 className="text-lg font-bold">{editingProduct ? "Editar Producto" : "Nuevo Producto"}</h2>
 
           <Input label="Nombre" {...register("name", { required: true })} />
 
@@ -204,11 +245,11 @@ export function ProductsPage() {
           </label>
 
           <div className="flex gap-2 justify-end pt-2">
-            <Button type="button" variant="ghost" onClick={() => dialog.current?.close()}>Cancelar</Button>
-            <Button type="submit">Guardar</Button>
+            <Button type="button" variant="ghost" onClick={closeModal}>Cancelar</Button>
+            <Button type="submit">{editingProduct ? "Guardar cambios" : "Guardar"}</Button>
           </div>
         </form>
-      </dialog>
+      </Modal>
     </div>
   );
 }

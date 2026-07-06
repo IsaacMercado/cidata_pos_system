@@ -92,12 +92,12 @@ export function SalesPage() {
                 </Badge>
               </Table.Cell>
               <Table.Cell>
-                {sale.status === "completed" && (
+                {(sale.status === "completed" || sale.status === "in_progress") && (
                   <button
                     onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
                     className="text-xs text-red-400 hover:text-red-600 transition-colors"
                   >
-                    Cancelar
+                    {sale.status === "in_progress" ? "Cancelar orden" : "Cancelar"}
                   </button>
                 )}
               </Table.Cell>

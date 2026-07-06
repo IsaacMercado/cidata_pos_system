@@ -274,7 +274,7 @@ export function PosPage() {
   return (
     <>
       <div className="flex h-full flex-col lg:flex-row">
-        <div className="lg:hidden fixed bottom-4 left-4 right-4 z-30">
+        <div className="lg:hidden fixed bottom-4 left-4 right-4 z-[60]">
           <Button onClick={() => setCartOpen(true)} className="w-full py-3 rounded-xl shadow-lg">
             <ShoppingCart size={18} />
             {activeOrder.name} — ${total.toFixed(2)}

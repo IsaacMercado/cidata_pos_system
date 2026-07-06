@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "preact/hooks";
+import { useState, useEffect } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { api } from "../lib/api";
 import { useToast } from "../components/pos/Toast";
 import { Users, UserPlus, Trash2 } from "lucide-react";
-import { Button, Input, Loading, PageHeader, Table } from "../components/ui";
+import { Button, Input, Loading, Modal, PageHeader, Table } from "../components/ui";
 
 interface FormData {
   name: string;
@@ -14,7 +14,7 @@ interface FormData {
 export function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [modalOpen, setModalOpen] = useState(false);
   const { toast } = useToast();
   const { register, handleSubmit, reset } = useForm<FormData>({
     defaultValues: { name: "", email: "", phone: "" },
@@ -28,6 +28,11 @@ export function CustomersPage() {
 
   useEffect(() => { load(); }, []);
 
+  function openModal() {
+    reset({ name: "", email: "", phone: "" });
+    setModalOpen(true);
+  }
+
   const onSubmit: SubmitHandler<FormData> = async (data) => {
     try {
       await api.customers.create({
@@ -36,7 +41,7 @@ export function CustomersPage() {
         email: data.email || undefined,
         phone: data.phone || undefined,
       });
-      dialog.current?.close();
+      setModalOpen(false);
       reset();
       toast("Cliente creado", "success");
       await load();
@@ -63,7 +68,7 @@ export function CustomersPage() {
         title="Clientes"
         icon={Users}
         action={
-          <Button onClick={() => dialog.current?.showModal()}>
+          <Button onClick={openModal}>
             <UserPlus size={14} /> Nuevo
           </Button>
         }
@@ -111,11 +116,8 @@ export function CustomersPage() {
         </Table.Body>
       </Table>
 
-      <dialog
-        ref={dialog}
-        className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-[calc(100%-2rem)] max-w-md bg-white max-h-[90dvh] overflow-y-auto"
-      >
-        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="sm">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <h2 className="text-lg font-bold">Nuevo Cliente</h2>
 
           <Input label="Nombre" {...register("name", { required: true })} />
@@ -126,11 +128,11 @@ export function CustomersPage() {
           </div>
 
           <div className="flex gap-2 justify-end pt-2">
-            <Button type="button" variant="ghost" onClick={() => dialog.current?.close()}>Cancelar</Button>
+            <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button type="submit">Guardar</Button>
           </div>
         </form>
-      </dialog>
+      </Modal>
     </div>
   );
 }

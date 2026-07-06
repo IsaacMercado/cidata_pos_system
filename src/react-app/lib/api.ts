@@ -1,7 +1,7 @@
 import type {
+  Customer,
   Product,
   ProductWithCategory,
-  Customer,
   SaleWithItems,
 } from "./types";
 
