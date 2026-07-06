@@ -1,2 +1,0 @@
-[     200ms] [WARNING] Error while trying to use the following icon from the Manifest: http://localhost:8787/icon-192.png (Download error or resource isn't a valid image) @ http://localhost:8787/products:0
-[    8813ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:8787/api/products/2:0
