@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import { api } from "../lib/api";
 import { useToast } from "../components/pos/Toast";
+import { Users, UserPlus, Trash2 } from "lucide-react";
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
@@ -56,14 +57,17 @@ export function CustomersPage() {
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-zinc-800 flex items-center gap-2">
-          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-400 to-violet-500 flex items-center justify-center text-white text-xs">●</span>
+          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-400 to-violet-500 flex items-center justify-center text-white">
+            <Users size={14} />
+          </span>
           Clientes
         </h1>
         <button
           onClick={() => dialog.current?.showModal()}
-          className="px-4 py-1.5 bg-zinc-900 text-white text-sm rounded hover:bg-zinc-800 transition-colors"
+          className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-500 transition-colors flex items-center gap-1.5"
         >
-          + Nuevo
+          <UserPlus size={14} />
+          Nuevo
         </button>
       </div>
 
@@ -84,7 +88,9 @@ export function CustomersPage() {
                 <tr key={c.id} className="border-t border-zinc-100 hover:bg-violet-50/30 transition-colors">
                   <td className="px-4 py-3 font-medium text-zinc-800">
                     <div className="flex items-center gap-2">
-                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-50 to-violet-100 flex items-center justify-center text-xs flex-shrink-0">👤</span>
+                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-50 to-violet-100 flex items-center justify-center flex-shrink-0">
+                        <Users size={14} className="text-violet-500" />
+                      </span>
                       {c.name}
                     </div>
                   </td>
@@ -98,7 +104,8 @@ export function CustomersPage() {
                     {new Date(c.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => remove(c.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">
+                    <button onClick={() => remove(c.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
+                      <Trash2 size={12} />
                       Eliminar
                     </button>
                   </td>
@@ -116,7 +123,7 @@ export function CustomersPage() {
 
       <dialog
         ref={dialog}
-        className="rounded-lg shadow-xl border border-zinc-200 p-0 backdrop:bg-black/30 w-full max-w-md m-auto"
+        className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-[calc(100%-2rem)] max-w-md bg-white max-h-[90dvh] overflow-y-auto"
       >
         <form onSubmit={save} className="p-5 space-y-4">
           <h2 className="text-lg font-bold">Nuevo Cliente</h2>
@@ -149,7 +156,7 @@ export function CustomersPage() {
             >
               Cancelar
             </button>
-            <button className="px-4 py-1.5 bg-zinc-900 text-white text-sm rounded hover:bg-zinc-800">
+            <button className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-500">
               Guardar
             </button>
           </div>

@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { api } from "../lib/api";
 
 type AuthMode = "login" | "register";
 
@@ -37,25 +38,14 @@ export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
 
     try {
       if (mode === "login") {
-        const res = await fetch("/api/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Login failed");
+        const data = await api.auth.login({ email, password });
         onLogin(data.user);
         reset();
         onClose();
       } else {
-        const res = await fetch("/api/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, username, password }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Registration failed");
-        onLogin(data);
+        await api.auth.register({ email, username, password });
+        const data = await api.auth.login({ email, password });
+        onLogin(data.user);
         reset();
         onClose();
       }

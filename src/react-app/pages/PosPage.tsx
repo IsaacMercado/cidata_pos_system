@@ -3,6 +3,25 @@ import type { ProductWithCategory, CartItem, SaleWithItems } from "../lib/types"
 import { api } from "../lib/api";
 import { useToast } from "../components/pos/Toast";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
+import {
+  cacheProducts,
+  getCachedProducts,
+  addPendingOp,
+} from "../lib/db";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
+import {
+  Search,
+  ShoppingCart,
+  Package,
+  Coffee,
+  Sandwich,
+  Popcorn,
+  Milk,
+  Sparkles,
+  X,
+  Minus,
+  Plus,
+} from "lucide-react";
 
 interface Order {
   id: number;
@@ -18,11 +37,18 @@ const pays = [
   { id: 4, code: "mobile", name: "Pago Móvil" },
 ];
 
-function categoryEmoji(name: string) {
-  const map: Record<string, string> = {
-    Bebidas: "☕", Alimentos: "🥪", Snacks: "🍿", Lácteos: "🥛", Limpieza: "🧹",
-  };
-  return map[name] || "📦";
+const CATEGORY_ICONS: Record<string, typeof Coffee> = {
+  Bebidas: Coffee,
+  Alimentos: Sandwich,
+  Snacks: Popcorn,
+  Lácteos: Milk,
+  Limpieza: Sparkles,
+};
+
+function CategoryIcon({ name }: { name: string }) {
+  const Icon = CATEGORY_ICONS[name];
+  if (!Icon) return <Package size={20} className="text-indigo-500" />;
+  return <Icon size={20} className="text-indigo-500" />;
 }
 
 let orderIdCounter = 0;
@@ -44,20 +70,33 @@ export function PosPage() {
   const [receiptSale, setReceiptSale] = useState<SaleWithItems | null>(null);
   const [payDialog, setPayDialog] = useState(false);
   const [payments, setPayments] = useState<{ methodId: number; amount: string }[]>([]);
+  const online = useOnlineStatus();
   const { toast } = useToast();
 
   useEffect(() => {
-    api.products.list().then((data: any[]) => {
-      const mapped: ProductWithCategory[] = data.map((p) => ({
-        ...p,
-        category: p.category || null,
-        current_stock: p.currentStock,
-        is_active: p.isActive,
-        tax_rate: p.taxRate ?? 0,
-      }));
-      setProducts(mapped.filter((p) => p.is_active));
+    async function load() {
+      try {
+        const data = await api.products.list();
+        await cacheProducts(data);
+        const mapped: ProductWithCategory[] = data.map((p) => ({
+          ...p,
+          category: p.category || null,
+        }));
+        setProducts(mapped.filter((p) => p.isActive));
+      } catch {
+        const cached = await getCachedProducts();
+        const mapped: ProductWithCategory[] = cached.map((p) => ({
+          ...p,
+          category: p.category || null,
+        }));
+        setProducts(mapped.filter((p) => p.isActive));
+        if (cached.length > 0) {
+          toast("Modo offline — productos cacheados", "success");
+        }
+      }
       setLoading(false);
-    });
+    }
+    load();
   }, []);
 
   const activeOrder = orders.find((o) => o.id === activeOrderId) || orders[0];
@@ -73,7 +112,7 @@ export function PosPage() {
 
   const total = +activeOrder.items.reduce((sum, item) => {
     const subtotal = +(item.product.price * item.quantity).toFixed(2);
-    const tax = +(subtotal * ((item.product as any).tax_rate || 0) / 100).toFixed(2);
+    const tax = +(subtotal * ((item.product as any).taxRate || 0) / 100).toFixed(2);
     return sum + subtotal + tax;
   }, 0).toFixed(2);
   const itemCount = activeOrder.items.reduce((sum, item) => sum + item.quantity, 0);
@@ -153,25 +192,51 @@ export function PosPage() {
   async function submitPayment() {
     if (Math.abs(paymentDiff) > 0.009 || submitting) return;
     setSubmitting(true);
+
+    const items = activeOrder.items.map((item) => ({
+      productId: item.product.id,
+      quantity: item.quantity,
+      unitPrice: item.product.price,
+      discountPercent: 0,
+    }));
+
+    const paymentData = {
+      payments: payments
+        .filter((p) => parseFloat(p.amount) > 0)
+        .map((p) => ({
+          paymentMethodId: p.methodId,
+          amount: +parseFloat(p.amount).toFixed(2),
+        })),
+    };
+
+    if (!online) {
+      try {
+        await addPendingOp({
+          type: "create_sale",
+          payload: {
+            status: "in_progress",
+            items,
+            payments: paymentData.payments,
+          },
+        });
+        setPayDialog(false);
+        toast("Venta guardada sin conexión — se sincronizará automáticamente", "success");
+        resetOrders();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Error guardando offline";
+        toast(msg, "error");
+      }
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const sale: any = await api.sales.create({
         status: "in_progress",
-        items: activeOrder.items.map((item) => ({
-          productId: item.product.id,
-          quantity: item.quantity,
-          unitPrice: item.product.price,
-          discountPercent: 0,
-        })),
+        items,
       });
 
-      const paid: any = await api.sales.pay(sale.id, {
-        payments: payments
-          .filter((p) => parseFloat(p.amount) > 0)
-          .map((p) => ({
-            paymentMethodId: p.methodId,
-            amount: +parseFloat(p.amount).toFixed(2),
-          })),
-      });
+      const paid: any = await api.sales.pay(sale.id, paymentData);
 
       setPayDialog(false);
       setReceiptSale(paid);
@@ -180,23 +245,27 @@ export function PosPage() {
         onClick: () => setReceiptSale(paid),
       });
 
-      setOrders((prev) => {
-        const next = prev.filter((o) => o.id !== activeOrderId);
-        if (next.length === 0) {
-          const fresh = createOrder("Orden 1");
-          setActiveOrderId(fresh.id);
-          return [fresh];
-        }
-        if (activeOrderId === next[0]?.id || !next.find((o) => o.id === activeOrderId)) {
-          setActiveOrderId(next[0].id);
-        }
-        return next;
-      });
+      resetOrders();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error desconocido";
       toast(msg, "error");
     }
     setSubmitting(false);
+  }
+
+  function resetOrders() {
+    setOrders((prev) => {
+      const next = prev.filter((o) => o.id !== activeOrderId);
+      if (next.length === 0) {
+        const fresh = createOrder("Orden 1");
+        setActiveOrderId(fresh.id);
+        return [fresh];
+      }
+      if (activeOrderId === next[0]?.id || !next.find((o) => o.id === activeOrderId)) {
+        setActiveOrderId(next[0].id);
+      }
+      return next;
+    });
   }
 
   if (loading) {
@@ -218,7 +287,7 @@ export function PosPage() {
             onClick={() => setCartOpen(true)}
             className="w-full py-3 bg-indigo-600 text-white rounded-xl shadow-lg flex items-center justify-center gap-2 font-medium"
           >
-            <span>🛒</span>
+            <ShoppingCart size={18} />
             {activeOrder.name} — ${total.toFixed(2)}
           </button>
         </div>
@@ -226,7 +295,7 @@ export function PosPage() {
         <div className="flex-1 flex flex-col lg:border-r border-zinc-200 pb-20 lg:pb-0">
           <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-zinc-200 p-3 flex items-center gap-2">
             <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"><Search size={16} /></span>
               <input
                 type="text"
                 placeholder="Buscar producto..."
@@ -252,22 +321,22 @@ export function PosPage() {
               <button
                 key={product.id}
                 onClick={() => addToCart(product)}
-                disabled={product.current_stock <= 0}
+                disabled={product.currentStock <= 0}
                 className="flex flex-col items-center justify-center p-4 bg-white border border-zinc-200 rounded-xl text-center hover:border-indigo-300 hover:shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center text-xl mb-2">
-                  {product.category ? categoryEmoji(product.category.name) : "📦"}
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center mb-2">
+                  {product.category ? <CategoryIcon name={product.category.name} /> : <Package size={20} className="text-indigo-500" />}
                 </div>
                 <span className="text-sm font-semibold text-zinc-800 leading-tight">{product.name}</span>
                 <span className="text-xs text-indigo-600 font-medium mt-1">
                   ${product.price.toFixed(2)}
                 </span>
-                {product.current_stock <= 5 && product.current_stock > 0 && (
+                {product.currentStock <= 5 && product.currentStock > 0 && (
                   <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded mt-1">
-                    {product.current_stock} uds.
+                    {product.currentStock} uds.
                   </span>
                 )}
-                {product.current_stock === 0 && (
+                {product.currentStock === 0 && (
                   <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded mt-1">
                     Agotado
                   </span>
@@ -291,14 +360,14 @@ export function PosPage() {
         >
           <div className="px-4 py-3 border-b border-zinc-200 bg-white flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-              🛒 {activeOrder.name}
+              <ShoppingCart size={16} /> {activeOrder.name}
               {itemCount > 0 && (
                 <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                   {itemCount}
                 </span>
               )}
             </h2>
-            <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600">✕</button>
+            <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600"><X size={18} /></button>
           </div>
 
           <div className="px-4 py-2 border-b border-zinc-200 bg-white flex items-center gap-2 overflow-auto">
@@ -322,14 +391,14 @@ export function PosPage() {
               onClick={addOrder}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-zinc-100 text-zinc-500 hover:bg-indigo-100 hover:text-indigo-600 transition-colors flex-shrink-0"
             >
-              + Nueva
+              <Plus size={14} /> Nueva
             </button>
           </div>
 
           <div className="flex-1 overflow-auto p-3 space-y-2">
             {activeOrder.items.map((item) => (
               <div key={item.product.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-zinc-200">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center text-sm flex-shrink-0">📦</div>
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-zinc-800 truncate">{item.product.name}</p>
                   <p className="text-xs text-zinc-400">${item.product.price.toFixed(2)} c/u</p>
@@ -337,19 +406,19 @@ export function PosPage() {
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                    className="w-8 h-8 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 rounded-lg text-sm text-zinc-600 transition-colors"
-                  >−</button>
+                    className="w-8 h-8 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors"
+                  ><Minus size={14} /></button>
                   <span className="w-8 text-center text-sm font-semibold text-zinc-800">{item.quantity}</span>
                   <button
                     onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                    className="w-8 h-8 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 rounded-lg text-sm text-zinc-600 transition-colors disabled:opacity-30"
-                  >+</button>
+                    className="w-8 h-8 flex items-center justify-center bg-zinc-100 hover:bg-zinc-200 rounded-lg text-zinc-600 transition-colors disabled:opacity-30"
+                  ><Plus size={14} /></button>
                 </div>
               </div>
             ))}
             {activeOrder.items.length === 0 && (
               <div className="text-center py-12">
-                <p className="text-3xl mb-2">🛒</p>
+                <ShoppingCart size={40} className="mx-auto mb-2 text-zinc-300" />
                 <p className="text-zinc-400 text-sm">Carrito vacío</p>
                 <p className="text-zinc-300 text-xs">Selecciona productos para empezar</p>
               </div>
@@ -410,7 +479,7 @@ export function PosPage() {
                     {pays.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                   </select>
                   <input className="rounded-xl border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-violet-500" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
-                  <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50" onClick={() => removePayment(index)} disabled={payments.length === 1}>✕</button>
+                  <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>
                 </div>
               ))}
             </div>

@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState, useEffect } from "preact/hooks";
 import { Route, Switch } from "wouter-preact";
 import { PosPage } from "./pages/PosPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -10,6 +10,8 @@ import { ToastProvider } from "./components/pos/Toast";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { LoginModal } from "./components/LoginModal";
 import { useOnlineStatus } from "./lib/useOnlineStatus";
+import { api } from "./lib/api";
+import { syncPendingOps } from "./lib/db";
 import "./style.css";
 
 export function App() {
@@ -20,12 +22,47 @@ export function App() {
     username: string;
   } | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+
+  useEffect(() => {
+    api.auth.me().then((u) => {
+      if (u) setUser(u);
+    }).catch(() => {}).finally(() => setRestoring(false));
+  }, []);
+
+  useEffect(() => {
+    if (online) {
+      syncPendingOps().catch(() => {});
+    }
+  }, [online]);
+
+  const handleLogout = async () => {
+    try {
+      await api.auth.logout();
+    } catch {}
+    setUser(null);
+  };
+
+  if (restoring) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-slate-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-indigo-400" />
+          <span className="text-sm text-slate-400">Restaurando sesión...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <ToastProvider>
       <div className="flex min-h-dvh flex-col md:flex-row">
         {!online && <OfflineBanner />}
-        <Sidebar userEmail={user?.email} onLoginClick={() => setModalOpen(true)} />
+        <Sidebar
+          userEmail={user?.email}
+          onLoginClick={() => setModalOpen(true)}
+          onLogout={handleLogout}
+        />
 
         <header className="md:hidden fixed right-4 top-3 z-[100] flex items-center gap-3">
           {user ? (
@@ -34,7 +71,7 @@ export function App() {
             </span>
           ) : (
             <button
-              className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-500"
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
               onClick={() => setModalOpen(true)}
             >
               Login / Register

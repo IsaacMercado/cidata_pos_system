@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef } from "preact/hooks";
 import { api } from "../lib/api";
 import { useToast } from "../components/pos/Toast";
+import { Package, Coffee, Sandwich, Popcorn, Milk, Sparkles, Plus, Trash2 } from "lucide-react";
 
-function categoryEmoji(name: string) {
-  const map: Record<string, string> = {
-    Bebidas: "☕", Alimentos: "🥪", Snacks: "🍿", Lácteos: "🥛", Limpieza: "🧹",
-  };
-  return map[name] || "📦";
+const CATEGORY_ICONS: Record<string, typeof Coffee> = {
+  Bebidas: Coffee,
+  Alimentos: Sandwich,
+  Snacks: Popcorn,
+  Lácteos: Milk,
+  Limpieza: Sparkles,
+};
+
+function CategoryIcon({ name }: { name: string }) {
+  const Icon = CATEGORY_ICONS[name];
+  if (!Icon) return <Package size={14} />;
+  return <Icon size={14} />;
 }
 
 export function ProductsPage() {
@@ -78,14 +86,17 @@ export function ProductsPage() {
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-zinc-800 flex items-center gap-2">
-          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-500 flex items-center justify-center text-white text-xs">■</span>
+          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-400 to-indigo-500 flex items-center justify-center text-white">
+            <Package size={14} />
+          </span>
           Productos
         </h1>
         <button
           onClick={() => dialog.current?.showModal()}
-          className="px-4 py-1.5 bg-zinc-900 text-white text-sm rounded hover:bg-zinc-800 transition-colors"
+          className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-500 transition-colors flex items-center gap-1.5"
         >
-          + Nuevo
+          <Plus size={14} />
+          Nuevo
         </button>
       </div>
 
@@ -108,8 +119,8 @@ export function ProductsPage() {
                 <tr key={p.id} className="border-t border-zinc-100 hover:bg-indigo-50/30 transition-colors">
                   <td className="px-4 py-3 font-medium text-zinc-800">
                     <div className="flex items-center gap-2">
-                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center text-xs flex-shrink-0">
-                        {p.category ? categoryEmoji(p.category.name) : "📦"}
+                      <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center flex-shrink-0">
+                        {p.category ? <CategoryIcon name={p.category.name} /> : <Package size={14} className="text-indigo-500" />}
                       </span>
                       {p.name}
                     </div>
@@ -139,7 +150,8 @@ export function ProductsPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => remove(p.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">
+                    <button onClick={() => remove(p.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
+                      <Trash2 size={12} />
                       Eliminar
                     </button>
                   </td>
@@ -157,7 +169,7 @@ export function ProductsPage() {
 
       <dialog
         ref={dialog}
-        className="rounded-lg shadow-xl border border-zinc-200 p-0 backdrop:bg-black/30 w-full max-w-md m-auto"
+        className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-[calc(100%-2rem)] max-w-md bg-white max-h-[90dvh] overflow-y-auto"
       >
         <form onSubmit={save} className="p-5 space-y-4">
           <h2 className="text-lg font-bold">Nuevo Producto</h2>
@@ -224,7 +236,7 @@ export function ProductsPage() {
             >
               Cancelar
             </button>
-            <button className="px-4 py-1.5 bg-zinc-900 text-white text-sm rounded hover:bg-zinc-800">
+            <button className="px-4 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-500">
               Guardar
             </button>
           </div>

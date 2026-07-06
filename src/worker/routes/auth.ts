@@ -85,6 +85,17 @@ auth.get("/users", async (c) => {
   return c.json(users.results);
 });
 
+auth.post("/logout", (c) => {
+  setCookie(c, "auth_token", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 0,
+  });
+  return c.json({ success: true });
+});
+
 auth.get("/users/me", async (c) => {
   const { payload, error } = await getJwtPayload(c);
   if (error || !payload) return c.json({ error }, 401);

@@ -22,7 +22,7 @@ interface StoreSchema {
     key: number;
     value: {
       id?: number;
-      type: "create_sale" | "create_customer" | "update_product";
+      type: "create_sale" | "create_customer" | "update_product" | "pay_sale";
       payload: any;
       createdAt: string;
       retries: number;
@@ -202,9 +202,42 @@ export async function clearAll() {
   await tx.done;
 }
 
+export async function syncPendingOps() {
+  const ops = await getPendingOps();
+  if (ops.length === 0) return;
+
+  const { api } = await import("./api");
+
+  for (const op of ops) {
+    try {
+      switch (op.type) {
+        case "create_sale":
+          await api.sales.create(op.payload);
+          break;
+        case "pay_sale":
+          await api.sales.pay(op.payload.saleId, op.payload);
+          break;
+        case "create_customer":
+          await api.customers.create(op.payload);
+          break;
+        case "update_product":
+          await api.products.update(op.payload.id, op.payload);
+          break;
+      }
+      await removePendingOp(op.id!);
+    } catch (e) {
+      await incrementRetry(op.id!);
+      if (op.retries >= 5) {
+        console.error("Permanent sync failure, skipping:", op.type, e);
+        await removePendingOp(op.id!);
+      }
+    }
+  }
+}
+
 type PendingOp = {
   id?: number;
-  type: "create_sale" | "create_customer" | "update_product";
+  type: "create_sale" | "create_customer" | "update_product" | "pay_sale";
   payload: any;
   createdAt: string;
   retries: number;

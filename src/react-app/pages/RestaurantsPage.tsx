@@ -13,6 +13,7 @@ import {
 } from "../lib/db";
 import { paymentMethods } from "../lib/paymentMethods";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
+import { useToast } from "../components/pos/Toast";
 
 type TableShape = "circle" | "rectangle";
 type TableForm = { name: string; capacity: number; shape: TableShape };
@@ -61,6 +62,7 @@ export function RestaurantsPage() {
   const [payments, setPayments] = useState<{ methodId: number; amount: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
+  const { toast } = useToast();
   const [dragging, setDragging] = useState<number | null>(null);
   const dragRef = useRef({ startX: 0, startY: 0, tableId: 0 });
 
@@ -292,7 +294,7 @@ export function RestaurantsPage() {
       clearDraftForTable(currentTable.id);
       await loadRestaurant(currentTable.restaurantId);
     } catch (error) {
-      alert("Error al guardar el pedido: " + (error as Error).message);
+      toast(error instanceof Error ? error.message : "Error al guardar", "error");
     }
 
     setSubmitting(false);
@@ -337,7 +339,7 @@ export function RestaurantsPage() {
       await loadRestaurant(currentTable.restaurantId);
       await selectTable(currentTable);
     } catch (error) {
-      alert("Error al cobrar: " + (error as Error).message);
+      toast(error instanceof Error ? error.message : "Error al cobrar", "error");
     }
     setSubmitting(false);
   }

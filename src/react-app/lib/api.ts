@@ -1,66 +1,114 @@
+import type {
+  Product,
+  ProductWithCategory,
+  Customer,
+  SaleWithItems,
+} from "./types";
+
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function request<T>(
+  path: string,
+  options?: RequestInit,
+  unwrapData = true,
+): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     ...options,
   });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-  return body.data as T;
+
+  if (res.status === 204) return undefined as T;
+
+  const body = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new ApiError(
+      body.error || body.message || `HTTP ${res.status}`,
+      res.status,
+    );
+  }
+
+  if (unwrapData && body.data !== undefined) return body.data as T;
+  return body as T;
 }
 
 export const api = {
-  // Products
   products: {
     list: (params?: { search?: string; categoryId?: number }) =>
-      request<any[]>(`/products${params ? "?" + new URLSearchParams(params as any).toString() : ""}`),
+      request<ProductWithCategory[]>(
+        `/products${params ? "?" + new URLSearchParams(params as any).toString() : ""}`,
+      ),
 
-    get: (id: number) => request<any>(`/products/${id}`),
+    get: (id: number) => request<ProductWithCategory>(`/products/${id}`),
 
-    create: (data: any) =>
-      request<any>("/products", { method: "POST", body: JSON.stringify(data) }),
+    create: (data: Partial<Product>) =>
+      request<Product>("/products", { method: "POST", body: JSON.stringify(data) }),
 
-    update: (id: number, data: any) =>
-      request<any>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    update: (id: number, data: Partial<Product>) =>
+      request<Product>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
     deactivate: (id: number) =>
-      request<any>(`/products/${id}`, { method: "DELETE" }),
+      request<{ success: boolean }>(`/products/${id}`, { method: "DELETE" }),
   },
 
-  // Customers
   customers: {
     list: (params?: { search?: string }) =>
-      request<any[]>(`/customers${params ? "?" + new URLSearchParams(params).toString() : ""}`),
+      request<Customer[]>(
+        `/customers${params ? "?" + new URLSearchParams(params).toString() : ""}`,
+      ),
 
-    create: (data: any) =>
-      request<any>("/customers", { method: "POST", body: JSON.stringify(data) }),
+    create: (data: Partial<Customer>) =>
+      request<Customer>("/customers", { method: "POST", body: JSON.stringify(data) }),
 
-    update: (id: number, data: any) =>
-      request<any>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    update: (id: number, data: Partial<Customer>) =>
+      request<Customer>(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   },
 
-  // Sales
   sales: {
     list: (params?: { status?: string; tableId?: number; limit?: number; offset?: number }) =>
-      request<any[]>(`/sales${params ? "?" + new URLSearchParams(params as any).toString() : ""}`),
+      request<SaleWithItems[]>(
+        `/sales${params ? "?" + new URLSearchParams(params as any).toString() : ""}`,
+      ),
 
-    get: (id: number) => request<any>(`/sales/${id}`),
+    get: (id: number) => request<SaleWithItems>(`/sales/${id}`),
 
-    create: (data: { items: any[]; customerId?: number; paymentMethodId?: number; notes?: string; tableId?: number; status?: string }) =>
-      request<any>("/sales", { method: "POST", body: JSON.stringify(data) }),
+    create: (data: {
+      items: { productId: number; quantity: number; unitPrice: number; discountPercent: number }[];
+      customerId?: number;
+      paymentMethodId?: number;
+      notes?: string;
+      tableId?: number;
+      status?: string;
+    }) =>
+      request<SaleWithItems>("/sales", { method: "POST", body: JSON.stringify(data) }),
 
     addItems: (id: number, data: { items: any[] }) =>
-      request<any>(`/sales/${id}/items`, { method: "POST", body: JSON.stringify(data) }),
+      request<SaleWithItems>(`/sales/${id}/items`, { method: "POST", body: JSON.stringify(data) }),
 
-    pay: (id: number, data: { payments: { paymentMethodId: number; amount: number; reference?: string }[]; customerId?: number; notes?: string }) =>
-      request<any>(`/sales/${id}/pay`, { method: "POST", body: JSON.stringify(data) }),
+    pay: (
+      id: number,
+      data: {
+        payments: { paymentMethodId: number; amount: number; reference?: string }[];
+        customerId?: number;
+        notes?: string;
+      },
+    ) => request<SaleWithItems>(`/sales/${id}/pay`, { method: "POST", body: JSON.stringify(data) }),
 
     cancel: (id: number) =>
-      request<any>(`/sales/${id}/cancel`, { method: "POST" }),
+      request<{ success: boolean }>(`/sales/${id}/cancel`, { method: "POST" }),
   },
 
-  // Inventory
   inventory: {
     stock: (lowStock?: boolean) =>
       request<any[]>(`/inventory/stock${lowStock ? "?lowStock=true" : ""}`),
@@ -69,7 +117,6 @@ export const api = {
       request<any>("/inventory/adjust", { method: "POST", body: JSON.stringify(data) }),
   },
 
-  // Restaurants
   restaurants: {
     list: () => request<any[]>("/restaurants"),
 
@@ -84,7 +131,6 @@ export const api = {
     deactivate: (id: number) =>
       request<any>(`/restaurants/${id}`, { method: "DELETE" }),
 
-    // Tables
     addTable: (restaurantId: number, data: any) =>
       request<any>(`/restaurants/${restaurantId}/tables`, { method: "POST", body: JSON.stringify(data) }),
 
@@ -95,14 +141,29 @@ export const api = {
       request<any>(`/restaurants/${restaurantId}/tables/${tableId}`, { method: "DELETE" }),
   },
 
-  // Auth
   auth: {
     login: (data: { email: string; password: string }) =>
-      request<{ user: any; token: string }>("/login", { method: "POST", body: JSON.stringify(data) }),
+      request<{ user: { id: number; email: string; username: string }; token: string; success: boolean }>(
+        "/login",
+        { method: "POST", body: JSON.stringify(data) },
+        false,
+      ),
 
     register: (data: { email: string; username: string; password: string }) =>
-      request<any>("/register", { method: "POST", body: JSON.stringify(data) }),
+      request<{ id: number; email: string; username: string }>(
+        "/register",
+        { method: "POST", body: JSON.stringify(data) },
+        false,
+      ),
 
-    me: () => request<any>("/users/me"),
+    me: () =>
+      request<{ id: number; email: string; username: string; name: string; role: string } | null>(
+        "/users/me",
+        undefined,
+        false,
+      ),
+
+    logout: () =>
+      request<{ success: boolean }>("/logout", { method: "POST" }, false),
   },
 };

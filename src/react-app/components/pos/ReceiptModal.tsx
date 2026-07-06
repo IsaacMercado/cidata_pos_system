@@ -36,10 +36,21 @@ export function ReceiptModal({
           <h2 className="text-lg font-bold text-zinc-800">pos-system</h2>
           <p className="text-xs text-zinc-400">Punto de Venta</p>
           <p className="text-xs text-zinc-400 mt-1">
-            {new Date(sale.created_at).toLocaleDateString()}{" "}
-            {new Date(sale.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {(() => {
+              // API may return created_at (snake_case) or createdAt (camelCase).
+              const raw = (sale as any).created_at ?? (sale as any).createdAt;
+              if (!raw) return "";
+              const d = new Date(raw);
+              if (Number.isNaN(d.getTime())) return "";
+              return (
+                <>
+                  {d.toLocaleDateString()} {" "}
+                  {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </>
+              );
+            })()}
           </p>
-          <p className="text-xs text-zinc-400">Recibo: {sale.receipt_number}</p>
+          <p className="text-xs text-zinc-400">Recibo: {sale.receiptNumber}</p>
         </div>
 
         {sale.customer && (
@@ -57,7 +68,7 @@ export function ReceiptModal({
             </tr>
           </thead>
           <tbody>
-            {sale.sale_items?.map((item) => (
+            {(sale.items || []).map((item) => (
               <tr key={item.id} className="border-t border-zinc-100">
                 <td className="py-1.5 text-zinc-800">{item.product.name}</td>
                 <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
@@ -74,9 +85,9 @@ export function ReceiptModal({
             <span>Subtotal</span>
             <span>${sale.subtotal.toFixed(2)}</span>
           </div>
-          {sale.sale_payments?.map((p) => (
+          {(sale.payments || []).map((p) => (
             <div key={p.id} className="flex justify-between text-zinc-500">
-              <span>{methodLabel[p.payment_method_id] || `Método ${p.payment_method_id}`}</span>
+              <span>{methodLabel[p.paymentMethodId] || `Método ${p.paymentMethodId}`}</span>
               <span>${p.amount.toFixed(2)}</span>
             </div>
           ))}
