@@ -1,4 +1,3 @@
--- Add email and password_hash to users for auth routes
-ALTER TABLE users ADD COLUMN email TEXT;
-ALTER TABLE users ADD COLUMN password_hash TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+-- Migration merged into 0006; kept only for migration chain continuity.
+-- All auth columns are already added by 0006.
+SELECT 1;

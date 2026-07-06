@@ -19,9 +19,9 @@ auth.post("/register", async (c) => {
 
   try {
     const result = await c.env.DB.prepare(
-      "INSERT INTO users (email, username, password_hash) VALUES (?, ?, ?)",
+      "INSERT INTO users (email, username, name, pin, password_hash) VALUES (?, ?, ?, ?, ?)",
     )
-      .bind(email, username, await passwordHash(password))
+      .bind(email, username, username, "", await passwordHash(password))
       .run();
 
     return c.json({ id: result.meta.last_row_id, email, username }, 201);

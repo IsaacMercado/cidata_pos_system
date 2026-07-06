@@ -9,10 +9,11 @@ INSERT OR IGNORE INTO payment_methods (code, name) VALUES
   ('transfer', 'Transferencia Bancaria'),
   ('mobile', 'Pago Móvil');
 
--- Default user
-INSERT OR IGNORE INTO users (username, name, pin, role) VALUES
-  ('admin', 'Administrador', '1234', 'admin'),
-  ('cashier1', 'Cajero 1', '0000', 'cashier');
+-- Default users (with email + password_hash for web auth)
+-- Passwords: admin/admin, cashier1/0000
+INSERT OR IGNORE INTO users (username, name, pin, role, email, password_hash) VALUES
+  ('admin', 'Administrador', '1234', 'admin', 'admin@pos.local', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918'),
+  ('cashier1', 'Cajero 1', '0000', 'cashier', 'cashier1@pos.local', '9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0');
 
 -- Categories
 INSERT OR IGNORE INTO categories (name, description) VALUES

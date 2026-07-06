@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { SubmitHandler, useForm } from "react-hook-form";
 import { useLocation, useRoute } from "wouter-preact";
 import { api } from "../lib/api";
 import {
@@ -47,9 +48,13 @@ export function RestaurantsPage() {
   const [list, setList] = useState<any[]>([]);
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "" });
-  const [tableForm, setTableForm] = useState<TableForm>({ name: "", capacity: 2, shape: "circle" });
   const [showTableForm, setShowTableForm] = useState(false);
+  const restForm = useForm<{ name: string; description: string }>({
+    defaultValues: { name: "", description: "" },
+  });
+  const tableForm = useForm<TableForm>({
+    defaultValues: { name: "", capacity: 2, shape: "circle" },
+  });
   const [products, setProducts] = useState<any[]>([]);
   const [productQuery, setProductQuery] = useState("");
   const [tablePickerView, setTablePickerView] = useState<"list" | "plan">("list");
@@ -124,22 +129,20 @@ export function RestaurantsPage() {
     setProducts(await getCachedProducts());
   }
 
-  async function saveRestaurant(e: Event) {
-    e.preventDefault();
-    if (editingId) await api.restaurants.update(editingId, form);
-    else await api.restaurants.create(form);
+  const onSaveRestaurant: SubmitHandler<{ name: string; description: string }> = async (data) => {
+    if (editingId) await api.restaurants.update(editingId, data);
+    else await api.restaurants.create(data);
     setShowForm(false);
-    setForm({ name: "", description: "" });
+    restForm.reset();
     if (editingId) void loadRestaurant(editingId);
     else void loadList();
   }
 
-  async function saveTable(e: Event) {
-    e.preventDefault();
+  const onSaveTable: SubmitHandler<TableForm> = async (data) => {
     if (!restaurant) return;
-    await api.restaurants.addTable(restaurant.id, tableForm);
+    await api.restaurants.addTable(restaurant.id, data);
     setShowTableForm(false);
-    setTableForm({ name: "", capacity: 2, shape: "circle" });
+    tableForm.reset({ name: "", capacity: 2, shape: "circle" });
     await loadRestaurant(restaurant.id);
   }
 
@@ -394,10 +397,10 @@ export function RestaurantsPage() {
         </div>
 
         {showForm && (
-          <form className="mb-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]" onSubmit={saveRestaurant}>
+          <form className="mb-4 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]" onSubmit={restForm.handleSubmit(onSaveRestaurant)}>
             <div className="space-y-3">
-              <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Nombre" value={form.name} onInput={(e: any) => setForm({ ...form, name: e.target.value })} required />
-              <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Descripción" value={form.description} onInput={(e: any) => setForm({ ...form, description: e.target.value })} />
+              <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Nombre" {...restForm.register("name", { required: true })} />
+              <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Descripción" {...restForm.register("description")} />
             </div>
             <button className="mt-3 w-full rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-4 py-2 text-sm font-semibold text-white">Guardar</button>
           </form>
@@ -436,20 +439,20 @@ export function RestaurantsPage() {
           </div>
           <div className="flex gap-2">
             <a href={`/restaurants/${restaurant.id}/order`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">Servicio</a>
-            <button className="rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-3 py-2 text-sm font-medium text-white" onClick={() => { setShowTableForm(true); setTableForm({ name: `Mesa ${tables.length + 1}`, capacity: 2, shape: "circle" }); }}>Nueva mesa</button>
+            <button className="rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 px-3 py-2 text-sm font-medium text-white" onClick={() => { tableForm.reset({ name: `Mesa ${tables.length + 1}`, capacity: 2, shape: "circle" }); setShowTableForm(true); }}>Nueva mesa</button>
           </div>
         </div>
 
         {showTableForm && (
-          <form className="mb-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-cyan-50 p-4" onSubmit={saveTable}>
+          <form className="mb-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-cyan-50 p-4" onSubmit={tableForm.handleSubmit(onSaveTable)}>
             <div className="grid gap-3 md:grid-cols-2">
-              <input className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Nombre" value={tableForm.name} onInput={(e: any) => setTableForm({ ...tableForm, name: e.target.value })} required />
-              <input className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" type="number" min="1" value={tableForm.capacity} onInput={(e: any) => setTableForm({ ...tableForm, capacity: parseInt(e.target.value) || 1 })} required />
+              <input className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" placeholder="Nombre" {...tableForm.register("name", { required: true })} />
+              <input className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" type="number" min="1" {...tableForm.register("capacity", { required: true, valueAsNumber: true })} />
             </div>
             <div className="mt-3 flex gap-2">
               {(["circle", "rectangle"] as const).map((shape) => (
-                <label key={shape} className={`rounded-xl border px-3 py-2 text-sm ${tableForm.shape === shape ? "border-violet-500 bg-white text-violet-700" : "border-slate-200 bg-white text-slate-600"}`}>
-                  <input className="sr-only" type="radio" checked={tableForm.shape === shape} onChange={() => setTableForm({ ...tableForm, shape })} />
+                <label key={shape} className={`rounded-xl border px-3 py-2 text-sm cursor-pointer ${tableForm.watch("shape") === shape ? "border-violet-500 bg-white text-violet-700" : "border-slate-200 bg-white text-slate-600"}`}>
+                  <input className="sr-only" type="radio" value={shape} {...tableForm.register("shape")} />
                   {shape === "circle" ? "Redonda" : "Rectangular"}
                 </label>
               ))}

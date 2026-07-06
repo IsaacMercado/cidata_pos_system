@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "preact/hooks";
-import { api } from "../lib/api";
+import { Coffee, Milk, Package, Plus, Popcorn, Sandwich, Sparkles, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { SubmitHandler, useForm } from "react-hook-form";
 import { useToast } from "../components/pos/Toast";
-import { Package, Coffee, Sandwich, Popcorn, Milk, Sparkles, Plus, Trash2 } from "lucide-react";
+import { api } from "../lib/api";
 
 const CATEGORY_ICONS: Record<string, typeof Coffee> = {
   Bebidas: Coffee,
@@ -17,12 +18,34 @@ function CategoryIcon({ name }: { name: string }) {
   return <Icon size={14} />;
 }
 
+interface FormData {
+  code: string;
+  name: string;
+  price: number;
+  cost: number;
+  categoryId: number | undefined;
+  description: string | undefined;
+  currentStock: number;
+}
+
 export function ProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const dialog = useRef<HTMLDialogElement>(null);
   const { toast } = useToast();
+
+  const { register, handleSubmit, reset } = useForm<FormData>({
+    defaultValues: {
+      code: "",
+      name: "",
+      price: 0,
+      cost: 0,
+      categoryId: undefined,
+      description: undefined,
+      currentStock: 0,
+    },
+  });
 
   async function load() {
     const data = await api.products.list();
@@ -33,20 +56,19 @@ export function ProductsPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function save(e: Event) {
-    e.preventDefault();
-    const fd = new FormData(e.target as HTMLFormElement);
+  const onSubmit: SubmitHandler<FormData> = async (data) => {
     try {
       await api.products.create({
-        code: (fd.get("code") as string) || `PROD-${Date.now()}`,
-        name: fd.get("name") as string,
-        price: parseFloat(fd.get("price") as string),
-        cost: parseFloat((fd.get("cost") as string) || "0"),
-        categoryId: parseInt(fd.get("category_id") as string) || undefined,
-        description: (fd.get("description") as string) || undefined,
-        currentStock: parseInt((fd.get("stock") as string) || "0"),
+        code: data.code || `PROD-${Date.now()}`,
+        name: data.name,
+        price: data.price,
+        cost: data.cost || 0,
+        categoryId: data.categoryId || undefined,
+        description: data.description || undefined,
+        currentStock: data.currentStock || 0,
       });
       dialog.current?.close();
+      reset();
       toast("Producto creado", "success");
       await load();
     } catch {
@@ -171,12 +193,13 @@ export function ProductsPage() {
         ref={dialog}
         className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-[calc(100%-2rem)] max-w-md bg-white max-h-[90dvh] overflow-y-auto"
       >
-        <form onSubmit={save} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
           <h2 className="text-lg font-bold">Nuevo Producto</h2>
 
           <label className="block">
             <span className="text-sm text-zinc-500">Nombre</span>
-            <input name="name" required
+            <input
+              {...register("name", { required: true })}
               className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
             />
           </label>
@@ -184,13 +207,17 @@ export function ProductsPage() {
           <div className="flex gap-3">
             <label className="flex-1">
               <span className="text-sm text-zinc-500">Precio</span>
-              <input name="price" type="number" step="0.01" required
+              <input
+                {...register("price", { required: true })}
+                type="number" step="0.01"
                 className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
               />
             </label>
             <label className="flex-1">
               <span className="text-sm text-zinc-500">Costo</span>
-              <input name="cost" type="number" step="0.01"
+              <input
+                {...register("cost")}
+                type="number" step="0.01"
                 className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
               />
             </label>
@@ -199,13 +226,16 @@ export function ProductsPage() {
           <div className="flex gap-3">
             <label className="flex-1">
               <span className="text-sm text-zinc-500">Código</span>
-              <input name="code"
+              <input
+                {...register("code")}
                 className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
               />
             </label>
             <label className="flex-1">
               <span className="text-sm text-zinc-500">Stock</span>
-              <input name="stock" type="number"
+              <input
+                {...register("currentStock")}
+                type="number"
                 className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
               />
             </label>
@@ -213,7 +243,8 @@ export function ProductsPage() {
 
           <label className="block">
             <span className="text-sm text-zinc-500">Categoría</span>
-            <select name="category_id"
+            <select
+              {...register("categoryId")}
               className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
             >
               <option value="">Sin categoría</option>
@@ -225,7 +256,9 @@ export function ProductsPage() {
 
           <label className="block">
             <span className="text-sm text-zinc-500">Descripción</span>
-            <textarea name="description" rows={2}
+            <textarea
+              {...register("description")}
+              rows={2}
               className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
             />
           </label>

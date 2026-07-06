@@ -1,13 +1,23 @@
 import { useState, useEffect, useRef } from "preact/hooks";
+import { SubmitHandler, useForm } from "react-hook-form";
 import { api } from "../lib/api";
 import { useToast } from "../components/pos/Toast";
 import { Users, UserPlus, Trash2 } from "lucide-react";
+
+interface FormData {
+  name: string;
+  email: string;
+  phone: string;
+}
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const dialog = useRef<HTMLDialogElement>(null);
   const { toast } = useToast();
+  const { register, handleSubmit, reset } = useForm<FormData>({
+    defaultValues: { name: "", email: "", phone: "" },
+  });
 
   async function load() {
     const data = await api.customers.list();
@@ -17,17 +27,16 @@ export function CustomersPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function save(e: Event) {
-    e.preventDefault();
-    const fd = new FormData(e.target as HTMLFormElement);
+  const onSubmit: SubmitHandler<FormData> = async (data) => {
     try {
       await api.customers.create({
         code: `CLT-${Date.now()}`,
-        name: fd.get("name") as string,
-        email: (fd.get("email") as string) || undefined,
-        phone: (fd.get("phone") as string) || undefined,
+        name: data.name,
+        email: data.email || undefined,
+        phone: data.phone || undefined,
       });
       dialog.current?.close();
+      reset();
       toast("Cliente creado", "success");
       await load();
     } catch {
@@ -125,12 +134,13 @@ export function CustomersPage() {
         ref={dialog}
         className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-[calc(100%-2rem)] max-w-md bg-white max-h-[90dvh] overflow-y-auto"
       >
-        <form onSubmit={save} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
           <h2 className="text-lg font-bold">Nuevo Cliente</h2>
 
           <label className="block">
             <span className="text-sm text-zinc-500">Nombre</span>
-            <input name="name" required
+            <input
+              {...register("name", { required: true })}
               className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
             />
           </label>
@@ -138,13 +148,15 @@ export function CustomersPage() {
           <div className="flex gap-3">
             <label className="flex-1">
               <span className="text-sm text-zinc-500">Email</span>
-              <input name="email" type="email"
+              <input type="email"
+                {...register("email")}
                 className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
               />
             </label>
             <label className="flex-1">
               <span className="text-sm text-zinc-500">Teléfono</span>
-              <input name="phone"
+              <input
+                {...register("phone")}
                 className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
               />
             </label>

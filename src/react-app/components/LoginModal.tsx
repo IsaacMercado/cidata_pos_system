@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { SubmitHandler, useForm } from "react-hook-form";
 import { api } from "../lib/api";
 
 type AuthMode = "login" | "register";
@@ -9,30 +10,33 @@ interface LoginModalProps {
   onLogin: (user: { id: number; email: string; username: string }) => void;
 }
 
+interface FormData {
+  email: string;
+  username: string;
+  password: string;
+}
+
 export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
   const [mode, setMode] = useState<AuthMode>("login");
-  const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { register, handleSubmit, reset } = useForm<FormData>({
+    defaultValues: {
+      email: "",
+      username: "",
+      password: "",
+    },
+  });
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   if (!open) return null;
-
-  const reset = () => {
-    setEmail("");
-    setUsername("");
-    setPassword("");
-    setError("");
-  };
 
   const switchMode = (m: AuthMode) => {
     setMode(m);
     setError("");
   };
 
-  const handleSubmit = async (e: Event) => {
-    e.preventDefault();
+  const onSubmit: SubmitHandler<FormData> = async ({ email, username, password }) => {
     setError("");
     setLoading(true);
 
@@ -40,15 +44,13 @@ export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
       if (mode === "login") {
         const data = await api.auth.login({ email, password });
         onLogin(data.user);
-        reset();
-        onClose();
       } else {
         await api.auth.register({ email, username, password });
         const data = await api.auth.login({ email, password });
         onLogin(data.user);
-        reset();
-        onClose();
       }
+      reset();
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -97,32 +99,26 @@ export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} class="flex flex-col gap-4">
+        <form onSubmit={handleSubmit(onSubmit)} class="flex flex-col gap-4">
           <input
             type="email"
             placeholder="Email"
-            value={email}
-            onInput={(e) => setEmail((e.target as HTMLInputElement).value)}
-            required
             className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
+            {...register("email", { required: true })}
           />
           {mode === "register" && (
             <input
               type="text"
               placeholder="Username"
-              value={username}
-              onInput={(e) => setUsername((e.target as HTMLInputElement).value)}
-              required
               className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
+              {...register("username", { required: true })}
             />
           )}
           <input
             type="password"
             placeholder="Password"
-            value={password}
-            onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-            required
             className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
+            {...register("password", { required: true })}
           />
           {error && (
             <p className="text-sm text-red-400">{error}</p>

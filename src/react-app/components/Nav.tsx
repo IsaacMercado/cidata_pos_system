@@ -1,13 +1,13 @@
-import { useLocation, useRoute } from "wouter-preact";
 import {
-  ShoppingCart,
-  Package,
-  Users,
-  Receipt,
-  UtensilsCrossed,
-  LogIn,
-  User,
+    LogIn,
+    Package,
+    Receipt,
+    ShoppingCart,
+    User,
+    Users,
+    UtensilsCrossed,
 } from "lucide-react";
+import { useLocation, useRoute } from "wouter-preact";
 
 const links = [
   { href: "/", label: "POS", icon: ShoppingCart },
