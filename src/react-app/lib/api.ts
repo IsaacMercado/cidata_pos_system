@@ -152,14 +152,14 @@ export const api = {
 
   auth: {
     login: (data: { email: string; password: string }) =>
-      request<{ user: { id: number; email: string; username: string; name: string; role: string; is_superuser: number }; token: string; success: boolean }>(
+      request<{ user: { id: number; email: string; username: string; name: string; role: string; isSuperuser: number; is_superuser?: number }; token: string; success: boolean }>(
         "/login",
         { method: "POST", body: JSON.stringify(data) },
         false,
       ),
 
     me: () =>
-      request<{ id: number; email: string; username: string; name: string; role: string; is_superuser: number } | null>(
+      request<{ id: number; email: string; username: string; name: string; role: string; isSuperuser: number; is_superuser?: number } | null>(
         "/users/me",
         undefined,
         false,

@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { validateJson, validationError } from "../lib/zvalidator";
 import type { Env } from "../index";
+import { purchaseOrders, purchaseOrderItems, products, sequences } from "../db/schema";
+import { eq, desc, sql } from "drizzle-orm";
 
 const app = new Hono<Env>();
 
@@ -17,41 +19,58 @@ const createOrderSchema = z.object({
 });
 
 app.get("/", async (c) => {
-  const { DB } = c.env;
+  const db = c.get("db");
+  const result = await db
+    .select({
+      id: purchaseOrders.id,
+      receiptNumber: purchaseOrders.receiptNumber,
+      notes: purchaseOrders.notes,
+      status: purchaseOrders.status,
+      userId: purchaseOrders.userId,
+      createdAt: purchaseOrders.createdAt,
+      totalItems: sql`COALESCE((SELECT SUM(quantity) FROM purchase_order_items WHERE purchase_order_id = ${purchaseOrders.id}), 0)`.mapWith(Number),
+    })
+    .from(purchaseOrders)
+    .orderBy(desc(purchaseOrders.createdAt))
+    .all();
 
-  const rows = await DB.prepare(
-    `SELECT po.id, po.receipt_number, po.notes, po.status, po.user_id, po.created_at,
-            (SELECT COALESCE(SUM(quantity), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_items
-     FROM purchase_orders po
-     ORDER BY po.created_at DESC`,
-  ).all();
-
-  return c.json(rows.results);
+  return c.json(result);
 });
 
 app.get("/:id", async (c) => {
+  const db = c.get("db");
   const id = parseInt(c.req.param("id"), 10);
-  const { DB } = c.env;
 
-  const order = await DB.prepare(
-    "SELECT * FROM purchase_orders WHERE id = ?",
-  ).bind(id).first() as any;
+  const order = await db
+    .select()
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.id, id))
+    .get();
 
-  if (!order) return c.json({ error: "Orden no encontrada" }, 404);
+  if (!order) return c.json({ error: "Order not found" }, 404);
 
-  const items = await DB.prepare(
-    `SELECT poi.*, p.name as product_name, p.code as product_code
-     FROM purchase_order_items poi
-     JOIN products p ON p.id = poi.product_id
-     WHERE poi.purchase_order_id = ?
-     ORDER BY poi.id`,
-  ).bind(id).all();
+  const items = await db
+    .select({
+      id: purchaseOrderItems.id,
+      purchaseOrderId: purchaseOrderItems.purchaseOrderId,
+      productId: purchaseOrderItems.productId,
+      quantity: purchaseOrderItems.quantity,
+      unitCost: purchaseOrderItems.unitCost,
+      createdAt: purchaseOrderItems.createdAt,
+      productName: products.name,
+      productCode: products.code,
+    })
+    .from(purchaseOrderItems)
+    .leftJoin(products, eq(products.id, purchaseOrderItems.productId))
+    .where(eq(purchaseOrderItems.purchaseOrderId, id))
+    .orderBy(purchaseOrderItems.id)
+    .all();
 
-  return c.json({ ...order, items: items.results });
+  return c.json({ ...order, items });
 });
 
 app.post("/", async (c) => {
-  const { DB } = c.env;
+  const db = c.get("db");
 
   let body: z.infer<typeof createOrderSchema>;
   try {
@@ -60,30 +79,38 @@ app.post("/", async (c) => {
     return c.json(validationError(e), 400);
   }
 
-  const seq = await DB.prepare(
-    "UPDATE sequences SET value = value + 1 WHERE name = 'receipt_number' RETURNING value",
-  ).first() as { value: number } | null;
+  const seq = await db
+    .update(sequences)
+    .set({ value: sql`value + 1` })
+    .where(eq(sequences.name, "receipt_number"))
+    .returning({ value: sequences.value })
+    .get();
 
   const seqValue = seq?.value ?? 1;
   const receiptNumber = `PO-${String(seqValue).padStart(5, "0")}`;
 
-  const result = await DB.prepare(
-    "INSERT INTO purchase_orders (receipt_number, notes) VALUES (?, ?) RETURNING id",
-  ).bind(receiptNumber, body.notes || null).first() as { id: number } | null;
+  const result = await db
+    .insert(purchaseOrders)
+    .values({ receiptNumber, notes: body.notes || null })
+    .returning({ id: purchaseOrders.id })
+    .get();
 
   if (!result) return c.json({ error: "Error creating order" }, 500);
 
-  const orderId = result.id;
-  const stmt = DB.prepare(
-    "INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity, unit_cost) VALUES (?, ?, ?, ?)",
-  );
+  await db.insert(purchaseOrderItems).values(
+    body.items.map((item) => ({
+      purchaseOrderId: result.id,
+      productId: item.productId,
+      quantity: item.quantity,
+      unitCost: item.unitCost,
+    })),
+  ).run();
 
-  for (const item of body.items) {
-    await stmt.bind(orderId, item.productId, item.quantity, item.unitCost).run();
-  }
-
-  const order = await DB.prepare("SELECT * FROM purchase_orders WHERE id = ?")
-    .bind(orderId).first();
+  const order = await db
+    .select()
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.id, result.id))
+    .get();
 
   return c.json(order, 201);
 });

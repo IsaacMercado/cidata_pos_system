@@ -1,8 +1,10 @@
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { sign, verify } from "hono/jwt";
-import { setCookie, getCookie } from "hono/cookie";
-import { getJwtPayload, passwordHash } from "../lib/auth";
+import { setCookie } from "hono/cookie";
+import { sign } from "hono/jwt";
+import { userPermissions, users } from "../db/schema";
 import type { Env } from "../index";
+import { getJwtPayload, passwordHash } from "../lib/auth";
 
 const auth = new Hono<Env>();
 
@@ -10,14 +12,18 @@ async function requireSuperuser(c: any, next: any) {
   const { error, payload } = await getJwtPayload(c);
   if (error || !payload) return c.json({ error: "No autorizado" }, 401);
 
-  const user = await c.env.DB.prepare(
-    "SELECT id, is_superuser FROM users WHERE username = ?",
-  )
-    .bind(payload.sub)
-    .first() as { id: number; is_superuser: number } | null;
+  const db = c.get("db");
+  const user = await db
+    .select({ id: users.id, isSuperuser: users.isSuperuser })
+    .from(users)
+    .where(eq(users.username, payload.sub as string))
+    .get();
 
-  if (!user || !user.is_superuser) {
-    return c.json({ error: "Acceso denegado: se requieren permisos de administrador" }, 403);
+  if (!user || !user.isSuperuser) {
+    return c.json(
+      { error: "Acceso denegado: se requieren permisos de administrador" },
+      403,
+    );
   }
 
   c.set("jwtPayload", payload);
@@ -25,6 +31,7 @@ async function requireSuperuser(c: any, next: any) {
 }
 
 auth.post("/login", async (c) => {
+  const db = c.get("db");
   const { email, password } = await c.req.json<{
     email: string;
     password: string;
@@ -34,27 +41,33 @@ auth.post("/login", async (c) => {
     return c.json({ error: "email and password are required" }, 400);
   }
 
-  const user = await c.env.DB.prepare(
-    "SELECT id, email, username, name, role, is_superuser, created_at FROM users WHERE email = ? AND password_hash = ?",
-  )
-    .bind(email, await passwordHash(password))
-    .first<{
-      id: number;
-      email: string;
-      username: string;
-      name: string;
-      role: string;
-      is_superuser: number;
-      created_at: string;
-    }>();
+  const user = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      name: users.name,
+      role: users.role,
+      isSuperuser: users.isSuperuser,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.email, email),
+        eq(users.passwordHash, await passwordHash(password)),
+      ),
+    )
+    .get();
 
   if (!user) {
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
+  const WEEK = 7 * 24 * 60 * 60;
   const payload = {
     sub: user.username,
-    exp: Math.floor(Date.now() / 1000) + 60 * 60,
+    exp: Math.floor(Date.now() / 1000) + WEEK,
   };
   const token = await sign(payload, c.env.JWT_SECRET);
 
@@ -63,39 +76,50 @@ auth.post("/login", async (c) => {
     secure: true,
     sameSite: "Lax",
     path: "/",
-    maxAge: 3600,
+    maxAge: WEEK,
   });
 
   return c.json({ user, token, success: true });
 });
 
 auth.get("/users", async (c) => {
-  const users = await c.env.DB.prepare(
-    "SELECT id, email, username, name, role, is_superuser, is_active, created_at FROM users ORDER BY created_at DESC",
-  ).all();
-  return c.json(users.results);
+  const db = c.get("db");
+  const result = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      name: users.name,
+      role: users.role,
+      isSuperuser: users.isSuperuser,
+      isActive: users.isActive,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .orderBy(users.createdAt);
+  return c.json(result);
 });
 
 auth.get("/users/me", async (c) => {
   const { payload, error } = await getJwtPayload(c);
   if (error || !payload) return c.json({ error }, 401);
 
-  const user = await c.env.DB.prepare(
-    "SELECT id, email, username, name, role, is_superuser, created_at FROM users WHERE username = ?",
-  )
-    .bind(payload.sub)
-    .first<{
-      id: number;
-      email: string;
-      username: string;
-      name: string;
-      role: string;
-      is_superuser: number;
-      created_at: string;
-    }>();
+  const db = c.get("db");
+  const user = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      name: users.name,
+      role: users.role,
+      isSuperuser: users.isSuperuser,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.username, payload.sub as string))
+    .get();
 
   if (!user) return c.json({ error: "User not found" }, 404);
-
   return c.json(user);
 });
 
@@ -111,6 +135,7 @@ auth.post("/logout", (c) => {
 });
 
 auth.post("/users", requireSuperuser, async (c) => {
+  const db = c.get("db");
   const { username, name, email, password, role } = await c.req.json<{
     username: string;
     name: string;
@@ -120,16 +145,32 @@ auth.post("/users", requireSuperuser, async (c) => {
   }>();
 
   if (!username || !name || !email || !password) {
-    return c.json({ error: "username, name, email, and password are required" }, 400);
+    return c.json(
+      { error: "username, name, email, and password are required" },
+      400,
+    );
   }
 
   try {
-    const result = await c.env.DB.prepare(
-      "INSERT INTO users (username, name, email, pin, password_hash, role) VALUES (?, ?, ?, '', ?, ?)",
-    )
-      .bind(username, name, email, await passwordHash(password), role || "cashier")
-      .run();
-    return c.json({ id: result.meta.last_row_id, username, name, email }, 201);
+    const result = await db
+      .insert(users)
+      .values({
+        username,
+        name,
+        email,
+        pin: "",
+        passwordHash: await passwordHash(password),
+        role: role || "cashier",
+      })
+      .returning({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        email: users.email,
+      })
+      .get();
+
+    return c.json(result, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     if (message.includes("UNIQUE constraint")) {
@@ -140,6 +181,7 @@ auth.post("/users", requireSuperuser, async (c) => {
 });
 
 auth.patch("/users/:id", requireSuperuser, async (c) => {
+  const db = c.get("db");
   const id = parseInt(c.req.param("id"), 10);
   const body = await c.req.json<{
     name?: string;
@@ -149,22 +191,18 @@ auth.patch("/users/:id", requireSuperuser, async (c) => {
     isSuperuser?: number;
   }>();
 
-  const sets: string[] = [];
-  const values: any[] = [];
+  const values: Record<string, any> = {};
+  if (body.name !== undefined) values.name = body.name;
+  if (body.email !== undefined) values.email = body.email;
+  if (body.role !== undefined) values.role = body.role;
+  if (body.isActive !== undefined) values.isActive = body.isActive;
+  if (body.isSuperuser !== undefined) values.isSuperuser = body.isSuperuser;
 
-  if (body.name !== undefined) { sets.push("name = ?"); values.push(body.name); }
-  if (body.email !== undefined) { sets.push("email = ?"); values.push(body.email); }
-  if (body.role !== undefined) { sets.push("role = ?"); values.push(body.role); }
-  if (body.isActive !== undefined) { sets.push("is_active = ?"); values.push(body.isActive); }
-  if (body.isSuperuser !== undefined) { sets.push("is_superuser = ?"); values.push(body.isSuperuser); }
+  if (Object.keys(values).length === 0)
+    return c.json({ error: "No fields to update" }, 400);
 
-  if (sets.length === 0) return c.json({ error: "No fields to update" }, 400);
-
-  values.push(id);
   try {
-    await c.env.DB.prepare(
-      `UPDATE users SET ${sets.join(", ")} WHERE id = ?`,
-    ).bind(...values).run();
+    await db.update(users).set(values).where(eq(users.id, id)).run();
     return c.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -173,9 +211,10 @@ auth.patch("/users/:id", requireSuperuser, async (c) => {
 });
 
 auth.delete("/users/:id", requireSuperuser, async (c) => {
+  const db = c.get("db");
   const id = parseInt(c.req.param("id"), 10);
   try {
-    await c.env.DB.prepare("UPDATE users SET is_active = 0 WHERE id = ?").bind(id).run();
+    await db.update(users).set({ isActive: 0 }).where(eq(users.id, id)).run();
     return c.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -187,57 +226,70 @@ auth.post("/users/change-password", async (c) => {
   const { error, payload } = await getJwtPayload(c);
   if (error || !payload) return c.json({ error }, 401);
 
+  const db = c.get("db");
   const { currentPassword, newPassword } = await c.req.json<{
     currentPassword: string;
     newPassword: string;
   }>();
 
   if (!currentPassword || !newPassword) {
-    return c.json({ error: "currentPassword and newPassword are required" }, 400);
+    return c.json(
+      { error: "currentPassword and newPassword are required" },
+      400,
+    );
   }
 
   if (newPassword.length < 4) {
     return c.json({ error: "New password must be at least 4 characters" }, 400);
   }
 
-  const user = await c.env.DB.prepare(
-    "SELECT id FROM users WHERE username = ? AND password_hash = ?",
-  )
-    .bind(payload.sub, await passwordHash(currentPassword))
-    .first<{ id: number }>();
+  const user = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.username, payload.sub as string),
+        eq(users.passwordHash, (await passwordHash(currentPassword)) as string),
+      ),
+    )
+    .get();
 
   if (!user) {
     return c.json({ error: "Current password is incorrect" }, 401);
   }
 
-  await c.env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?")
-    .bind(await passwordHash(newPassword), user.id)
+  await db
+    .update(users)
+    .set({ passwordHash: await passwordHash(newPassword) })
+    .where(eq(users.id, user.id))
     .run();
 
   return c.json({ success: true });
 });
 
 auth.get("/users/permissions/:userId", async (c) => {
+  const db = c.get("db");
   const userId = parseInt(c.req.param("userId"), 10);
-  const screens = await c.env.DB.prepare(
-    "SELECT screen FROM user_permissions WHERE user_id = ?",
-  ).bind(userId).all();
+  const rows = await db
+    .select({ screen: userPermissions.screen })
+    .from(userPermissions)
+    .where(eq(userPermissions.userId, userId))
+    .all();
 
-  return c.json(screens.results.map((r: any) => r.screen));
+  return c.json(rows.map((r) => r.screen));
 });
 
 auth.put("/users/permissions/:userId", requireSuperuser, async (c) => {
+  const db = c.get("db");
   const userId = parseInt(c.req.param("userId"), 10);
   const { screens } = await c.req.json<{ screens: string[] }>();
 
-  const db = c.env.DB;
-  await db.prepare("DELETE FROM user_permissions WHERE user_id = ?").bind(userId).run();
+  await db.delete(userPermissions).where(eq(userPermissions.userId, userId)).run();
 
   if (screens && screens.length > 0) {
-    const stmt = db.prepare("INSERT INTO user_permissions (user_id, screen) VALUES (?, ?)");
-    for (const screen of screens) {
-      await stmt.bind(userId, screen).run();
-    }
+    await db
+      .insert(userPermissions)
+      .values(screens.map((screen) => ({ userId, screen }))).run();
   }
 
   return c.json({ success: true, screens });

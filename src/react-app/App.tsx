@@ -39,10 +39,11 @@ export function App() {
   const [, navigate] = useLocation();
 
   useEffect(() => {
-    api.auth.me().then((u) => {
+    api.auth.me().then((u: any) => {
       if (u) {
-        setUser(u);
-        loadPermissions(u);
+        const normalized = { ...u, is_superuser: u.isSuperuser ?? u.is_superuser ?? 0 };
+        setUser(normalized);
+        loadPermissions(normalized);
       }
     }).catch(() => {}).finally(() => setRestoring(false));
   }, []);
@@ -72,9 +73,10 @@ export function App() {
     }
   }, [online]);
 
-  const handleLogin = async (u: UserInfo) => {
-    setUser(u);
-    await loadPermissions(u);
+  const handleLogin = async (u: any) => {
+    const normalized = { ...u, is_superuser: u.isSuperuser ?? u.is_superuser ?? 0 };
+    setUser(normalized);
+    await loadPermissions(normalized);
   };
 
   const handleLogout = async () => {

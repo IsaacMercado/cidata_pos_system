@@ -6,7 +6,7 @@ import { Button } from "./ui";
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
-  onLogin: (user: { id: number; email: string; username: string; name: string; role: string; is_superuser: number }) => void;
+  onLogin: (user: any) => void;
 }
 
 interface FormData {

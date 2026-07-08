@@ -1,9 +1,9 @@
+import { and, eq, like, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { validateJson, validationError } from "../lib/zvalidator";
-import type { Env } from "../index";
 import { products } from "../db/schema";
-import { eq, like, sql, and } from "drizzle-orm";
+import type { Env } from "../index";
+import { validateJson, validationError } from "../lib/zvalidator";
 
 const app = new Hono<Env>();
 

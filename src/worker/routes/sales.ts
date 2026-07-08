@@ -1,9 +1,9 @@
+import { and, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { validateJson, validationError } from "../lib/zvalidator";
+import { products, saleItems, salePayments, sales, sequences } from "../db/schema";
 import type { Env } from "../index";
-import { sales, saleItems, salePayments, products } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { validateJson, validationError } from "../lib/zvalidator";
 
 const app = new Hono<Env>();
 
@@ -40,67 +40,43 @@ const paySchema = z.object({
   notes: z.string().optional(),
 });
 
-async function generateReceiptNumber(d1: D1Database): Promise<string> {
+async function generateReceiptNumber(db: Env["Variables"]["db"]): Promise<string> {
   const date = new Date();
   const prefix = `REC-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
 
-  await d1.prepare(
-    "INSERT OR IGNORE INTO sequences (name, value) VALUES ('receipt_number', 1)",
-  ).run();
+  await db.insert(sequences).values({ name: "receipt_number", value: 1 }).onConflictDoNothing().run();
 
-  await d1.prepare(
-    "UPDATE sequences SET value = value + 1 WHERE name = 'receipt_number'",
-  ).run();
-
-  const seq = await d1.prepare(
-    "SELECT value FROM sequences WHERE name = 'receipt_number'",
-  ).first<{ value: number }>();
+  const seq = await db
+    .update(sequences)
+    .set({ value: sql`value + 1` })
+    .where(eq(sequences.name, "receipt_number"))
+    .returning({ value: sequences.value })
+    .get();
 
   return `${prefix}-${String(seq!.value).padStart(5, "0")}`;
 }
 
-function buildSaleItemInsert(
-  d1: D1Database,
-  saleId: number,
-  item: z.infer<typeof saleItemInput>,
-) {
-  return d1.prepare(
-    `INSERT INTO sale_items (
-      sale_id, product_id, quantity, unit_price, discount_percent,
-      discount_amount, subtotal, tax_amount, total
-    )
-    WITH input AS (
-      SELECT
-        ? AS sale_id,
-        ? AS product_id,
-        ? AS quantity,
-        ? AS unit_price,
-        ? AS discount_percent,
-        COALESCE((SELECT tax_rate FROM products WHERE id = ?), 0) AS tax_rate
-    )
-    SELECT
-      sale_id,
-      product_id,
-      quantity,
-      unit_price,
-      discount_percent,
-      ROUND(quantity * unit_price * (discount_percent / 100.0), 2),
-      ROUND(quantity * unit_price - (quantity * unit_price * (discount_percent / 100.0)), 2),
-      ROUND((quantity * unit_price - (quantity * unit_price * (discount_percent / 100.0))) * (tax_rate / 100.0), 2),
-      ROUND(
-        ROUND(quantity * unit_price - (quantity * unit_price * (discount_percent / 100.0)), 2)
-        + ROUND((quantity * unit_price - (quantity * unit_price * (discount_percent / 100.0))) * (tax_rate / 100.0), 2),
-        2
-      )
-    FROM input`,
-  ).bind(
+function insertSaleItemValues(saleId: number, item: z.infer<typeof saleItemInput>) {
+  return {
     saleId,
-    item.productId,
-    item.quantity,
-    item.unitPrice,
-    item.discountPercent,
-    item.productId,
-  );
+    productId: item.productId,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    discountPercent: item.discountPercent,
+    discountAmount: sql`ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2)`,
+    subtotal: sql`ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)`,
+    taxAmount: sql`ROUND(
+      ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)
+      * (COALESCE((SELECT tax_rate FROM products WHERE id = ${item.productId}), 0) / 100.0)
+    , 2)`,
+    total: sql`ROUND(
+      ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)
+      + ROUND(
+        ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)
+        * (COALESCE((SELECT tax_rate FROM products WHERE id = ${item.productId}), 0) / 100.0)
+      , 2)
+    , 2)`,
+  };
 }
 
 async function getSaleDetails(db: Env["Variables"]["db"], id: number) {
@@ -151,7 +127,6 @@ function asClientError(error: unknown) {
 
 app.post("/", async (c) => {
   const db = c.get("db");
-  const d1 = c.get("env").DB;
 
   let body: z.infer<typeof createSaleSchema>;
   try {
@@ -160,7 +135,7 @@ app.post("/", async (c) => {
     return c.json(validationError(e), 400);
   }
 
-  const receiptNumber = await generateReceiptNumber(d1);
+  const receiptNumber = await generateReceiptNumber(db);
 
   const result = await db
     .insert(sales)
@@ -181,7 +156,9 @@ app.post("/", async (c) => {
     .get();
 
   try {
-    await d1.batch(body.items.map((item) => buildSaleItemInsert(d1, result.id, item)));
+    for (const item of body.items) {
+      await db.insert(saleItems).values(insertSaleItemValues(result.id, item)).run();
+    }
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);
@@ -189,7 +166,6 @@ app.post("/", async (c) => {
   }
 
   const fullSale = await getSaleDetails(db, result.id);
-
   return c.json({ data: fullSale }, 201);
 });
 
@@ -208,7 +184,7 @@ app.get("/", async (c) => {
     .select()
     .from(sales)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(sql`created_at DESC`)
+    .orderBy(desc(sales.createdAt))
     .limit(limit)
     .offset(offset)
     .all();
@@ -219,17 +195,13 @@ app.get("/", async (c) => {
 app.get("/:id", async (c) => {
   const db = c.get("db");
   const id = Number(c.req.param("id"));
-
   const sale = await getSaleDetails(db, id);
-
   if (!sale) return c.json({ error: "Sale not found" }, 404);
-
   return c.json({ data: sale });
 });
 
 app.post("/:id/items", async (c) => {
   const db = c.get("db");
-  const d1 = c.get("env").DB;
   const id = Number(c.req.param("id"));
 
   const sale = await db
@@ -249,7 +221,9 @@ app.post("/:id/items", async (c) => {
   }
 
   try {
-    await d1.batch(body.items.map((item) => buildSaleItemInsert(d1, id, item)));
+    for (const item of body.items) {
+      await db.insert(saleItems).values(insertSaleItemValues(id, item)).run();
+    }
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);
@@ -262,7 +236,6 @@ app.post("/:id/items", async (c) => {
 
 app.post("/:id/pay", async (c) => {
   const db = c.get("db");
-  const d1 = c.get("env").DB;
   const id = Number(c.req.param("id"));
 
   const sale = await db
@@ -286,34 +259,22 @@ app.post("/:id/pay", async (c) => {
     saleId: id,
     paymentMethodId: p.paymentMethodId,
     amount: Math.round(p.amount * 100) / 100,
-    reference: p.reference,
+    reference: p.reference || null,
   }));
 
-  const stmts = [
-    d1.prepare("DELETE FROM sale_payments WHERE sale_id = ?").bind(id),
-  ];
-
-  for (const p of paymentValues) {
-    stmts.push(
-      d1.prepare(
-        "INSERT INTO sale_payments (sale_id, payment_method_id, amount, reference) VALUES (?, ?, ?, ?)",
-      ).bind(p.saleId, p.paymentMethodId, p.amount, p.reference || null),
-    );
-  }
-
-  stmts.push(
-    d1.prepare(
-      "UPDATE sales SET status = 'completed', customer_id = COALESCE(?, customer_id), notes = COALESCE(?, notes), payment_method_id = ? WHERE id = ?",
-    ).bind(
-      body.customerId ?? null,
-      body.notes ?? null,
-      paymentValues.length === 1 ? paymentValues[0].paymentMethodId : null,
-      id,
-    ),
-  );
-
   try {
-    await d1.batch(stmts);
+    await db.delete(salePayments).where(eq(salePayments.saleId, id)).run();
+    await db.insert(salePayments).values(paymentValues).run();
+    await db
+      .update(sales)
+      .set({
+        status: "completed",
+        customerId: body.customerId ?? sale.customerId,
+        notes: body.notes ?? sale.notes,
+        paymentMethodId: paymentValues.length === 1 ? paymentValues[0].paymentMethodId : null,
+      })
+      .where(eq(sales.id, id))
+      .run();
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);
@@ -321,7 +282,6 @@ app.post("/:id/pay", async (c) => {
   }
 
   const fullSale = await getSaleDetails(db, id);
-
   return c.json({ data: fullSale });
 });
 
