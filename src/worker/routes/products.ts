@@ -18,9 +18,21 @@ const createSchema = z.object({
   taxRate: z.number().min(0).default(0),
   unit: z.string().default("unit"),
   minStock: z.number().min(0).default(0),
+  currentStock: z.number().min(0).default(0),
 });
 
-const updateSchema = createSchema.partial().extend({
+const updateSchema = z.object({
+  code: z.string().min(1).max(50).optional(),
+  barcode: z.string().max(50).optional(),
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().optional(),
+  categoryId: z.number().optional(),
+  price: z.number().min(0).optional(),
+  cost: z.number().min(0).optional(),
+  taxRate: z.number().min(0).optional(),
+  unit: z.string().optional(),
+  minStock: z.number().min(0).optional(),
+  currentStock: z.number().min(0).optional(),
   isActive: z.number().min(0).max(1).optional(),
 });
 

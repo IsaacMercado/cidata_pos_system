@@ -1,3 +1,4 @@
+import { forwardRef } from "preact/compat";
 import type { ComponentChildren } from "preact";
 
 interface SelectProps {
@@ -11,28 +12,30 @@ interface SelectProps {
   children?: ComponentChildren;
   onChange?: (e: Event) => void;
   onBlur?: (e: FocusEvent) => void;
-  ref?: any;
 }
 
-export function Select({ className = "", label, id, children, ...props }: SelectProps) {
-  const select = (
-    <select
-      id={id}
-      className={`w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500 ${className}`}
-      {...props}
-    >
-      {children}
-    </select>
-  );
-
-  if (label) {
-    return (
-      <label className="block">
-        <span className="text-sm text-zinc-500">{label}</span>
-        {select}
-      </label>
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  ({ className = "", label, id, children, ...props }, ref) => {
+    const select = (
+      <select
+        id={id}
+        ref={ref}
+        className={`w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500 ${className}`}
+        {...props}
+      >
+        {children}
+      </select>
     );
-  }
 
-  return select;
-}
+    if (label) {
+      return (
+        <label className="block">
+          <span className="text-sm text-zinc-500">{label}</span>
+          {select}
+        </label>
+      );
+    }
+
+    return select;
+  },
+);

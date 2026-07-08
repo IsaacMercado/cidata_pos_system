@@ -64,8 +64,17 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash"),
   role: text("role").notNull().default("cashier"),
   isActive: integer("is_active").notNull().default(1),
+  isSuperuser: integer("is_superuser").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+// ─── User Permissions ─────────────────────────────────────────────────────────
+export const userPermissions = sqliteTable("user_permissions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  screen: text("screen").notNull(),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
 // ─── Payment Methods ─────────────────────────────────────────────────────────

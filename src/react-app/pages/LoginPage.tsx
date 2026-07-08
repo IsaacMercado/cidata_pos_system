@@ -1,78 +1,59 @@
 import { useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
+import { useLocation } from "wouter-preact";
+import { Button, Input } from "../components/ui";
 import { api } from "../lib/api";
-import { Button } from "./ui";
-
-interface LoginModalProps {
-  open: boolean;
-  onClose: () => void;
-  onLogin: (user: { id: number; email: string; username: string; name: string; role: string; is_superuser: number }) => void;
-}
 
 interface FormData {
   email: string;
   password: string;
 }
 
-export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
+export function LoginPage({ onLogin }: { onLogin: (user: any) => Promise<void> }) {
   const { register, handleSubmit, reset } = useForm<FormData>({
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
-
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  if (!open) return null;
+  const [, navigate] = useLocation();
 
   const onSubmit: SubmitHandler<FormData> = async ({ email, password }) => {
     setError("");
     setLoading(true);
-
     try {
       const data = await api.auth.login({ email, password });
-      onLogin(data.user);
+      await onLogin(data.user);
       reset();
-      onClose();
+      navigate("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : "Credenciales inválidas");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl bg-slate-900 p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Iniciar Sesión</h2>
-          <button
-            className="text-2xl leading-none text-slate-400 hover:text-white"
-            onClick={onClose}
-            aria-label="close"
-          >
-            &times;
-          </button>
+    <div className="flex min-h-dvh items-center justify-center bg-slate-950 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500 text-2xl font-bold text-white">
+            P
+          </div>
+          <h1 className="text-2xl font-bold text-white">Punto de Venta</h1>
+          <p className="mt-1 text-sm text-slate-400">Inicia sesión para continuar</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} class="flex flex-col gap-4">
-          <input
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          <Input
             type="email"
             placeholder="Email"
+            autoFocus
             className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
             {...register("email", { required: true })}
           />
-          <input
+          <Input
             type="password"
-            placeholder="Password"
+            placeholder="Contraseña"
             className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
             {...register("password", { required: true })}
           />
@@ -82,10 +63,9 @@ export function LoginModal({ open, onClose, onLogin }: LoginModalProps) {
           <Button
             type="submit"
             disabled={loading}
-            variant="primary"
-            className="rounded-lg bg-violet-600 hover:bg-violet-500"
+            className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium hover:bg-violet-500"
           >
-            {loading ? "..." : "Login"}
+            {loading ? "Entrando..." : "Iniciar Sesión"}
           </Button>
         </form>
       </div>

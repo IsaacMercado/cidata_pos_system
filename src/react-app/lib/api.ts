@@ -143,21 +143,14 @@ export const api = {
 
   auth: {
     login: (data: { email: string; password: string }) =>
-      request<{ user: { id: number; email: string; username: string }; token: string; success: boolean }>(
+      request<{ user: { id: number; email: string; username: string; name: string; role: string; is_superuser: number }; token: string; success: boolean }>(
         "/login",
         { method: "POST", body: JSON.stringify(data) },
         false,
       ),
 
-    register: (data: { email: string; username: string; password: string }) =>
-      request<{ id: number; email: string; username: string }>(
-        "/register",
-        { method: "POST", body: JSON.stringify(data) },
-        false,
-      ),
-
     me: () =>
-      request<{ id: number; email: string; username: string; name: string; role: string } | null>(
+      request<{ id: number; email: string; username: string; name: string; role: string; is_superuser: number } | null>(
         "/users/me",
         undefined,
         false,
@@ -165,5 +158,26 @@ export const api = {
 
     logout: () =>
       request<{ success: boolean }>("/logout", { method: "POST" }, false),
+
+    list: () =>
+      request<any[]>("/users", undefined, false),
+
+    create: (data: { username: string; name: string; email: string; password: string; role?: string }) =>
+      request<any>("/users", { method: "POST", body: JSON.stringify(data) }, false),
+
+    update: (id: number, data: { name?: string; email?: string; role?: string; isActive?: number; isSuperuser?: number }) =>
+      request<any>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }, false),
+
+    deactivate: (id: number) =>
+      request<{ success: boolean }>(`/users/${id}`, { method: "DELETE" }, false),
+
+    changePassword: (data: { currentPassword: string; newPassword: string }) =>
+      request<{ success: boolean }>("/users/change-password", { method: "POST", body: JSON.stringify(data) }, false),
+
+    getPermissions: (userId: number) =>
+      request<string[]>(`/users/permissions/${userId}`, undefined, false),
+
+    setPermissions: (userId: number, screens: string[]) =>
+      request<{ success: boolean }>(`/users/permissions/${userId}`, { method: "PUT", body: JSON.stringify({ screens }) }, false),
   },
 };

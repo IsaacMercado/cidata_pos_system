@@ -35,19 +35,18 @@ export function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [formValues, setFormValues] = useState<FormData>({
+    code: "",
+    name: "",
+    price: 0,
+    cost: 0,
+    categoryId: undefined,
+    description: undefined,
+    currentStock: 0,
+  });
   const { toast } = useToast();
 
-  const { register, handleSubmit, reset } = useForm<FormData>({
-    defaultValues: {
-      code: "",
-      name: "",
-      price: 0,
-      cost: 0,
-      categoryId: undefined,
-      description: undefined,
-      currentStock: 0,
-    },
-  });
+  const { register, handleSubmit } = useForm<FormData>({ values: formValues });
 
   async function load() {
     const data = await api.products.list();
@@ -60,13 +59,13 @@ export function ProductsPage() {
 
   function openNew() {
     setEditingProduct(null);
-    reset({ code: "", name: "", price: 0, cost: 0, categoryId: undefined, description: undefined, currentStock: 0 });
+    setFormValues({ code: "", name: "", price: 0, cost: 0, categoryId: undefined, description: undefined, currentStock: 0 });
     setModalOpen(true);
   }
 
   function openEdit(product: any) {
     setEditingProduct(product);
-    reset({
+    setFormValues({
       code: product.code || "",
       name: product.name || "",
       price: product.price || 0,

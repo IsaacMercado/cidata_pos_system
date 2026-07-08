@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { useLocation, useRoute } from "wouter-preact";
 import {
+  LayoutDashboard,
   ShoppingCart,
   Package,
   Users,
@@ -10,23 +11,27 @@ import {
   LogIn,
   ChevronLeft,
   ChevronRight,
+  Shield,
+  Key,
 } from "lucide-react";
 
-const links = [
-  { href: "/", label: "POS", icon: ShoppingCart },
-  { href: "/products", label: "Productos", icon: Package },
-  { href: "/customers", label: "Clientes", icon: Users },
-  { href: "/sales", label: "Ventas", icon: Receipt },
-  { href: "/restaurants", label: "Restaurante", icon: UtensilsCrossed },
+const allLinks = [
+  { href: "/", label: "Inicio", icon: LayoutDashboard, screen: null as string | null },
+  { href: "/pos", label: "POS", icon: ShoppingCart, screen: "pos" },
+  { href: "/products", label: "Productos", icon: Package, screen: "products" },
+  { href: "/customers", label: "Clientes", icon: Users, screen: "customers" },
+  { href: "/sales", label: "Ventas", icon: Receipt, screen: "sales" },
+  { href: "/restaurants", label: "Restaurante", icon: UtensilsCrossed, screen: "restaurants" },
 ];
 
 interface SidebarProps {
-  userEmail?: string;
-  onLoginClick: () => void;
+  user: { id: number; email?: string; username: string; is_superuser: number } | null;
+  permissions: string[];
   onLogout: () => void;
+  onChangePasswordClick: () => void;
 }
 
-export function Sidebar({ userEmail, onLoginClick, onLogout }: SidebarProps) {
+export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: SidebarProps) {
   const [open, setOpen] = useState(false);
   const [, navigate] = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
@@ -43,6 +48,10 @@ export function Sidebar({ userEmail, onLoginClick, onLogout }: SidebarProps) {
     } catch {}
     setCollapsed((v) => !v);
   }
+
+  const isSuperuser = user?.is_superuser === 1;
+  const links = allLinks.filter((l) => !l.screen || isSuperuser || permissions.includes(l.screen));
+  const showAdmin = isSuperuser || permissions.includes("users");
 
   return (
     <>
@@ -86,7 +95,7 @@ export function Sidebar({ userEmail, onLoginClick, onLogout }: SidebarProps) {
 
         <nav className="flex-1 py-3 space-y-0.5 px-2">
           {links.map((link) => {
-            const [isActive] = useRoute(link.href === "/" ? "/" : link.href);
+            const [isActive] = useRoute(link.href === "/" ? "/" : link.href === "/pos" ? "/pos" : link.href);
             return (
               <a
                 key={link.href}
@@ -110,23 +119,54 @@ export function Sidebar({ userEmail, onLoginClick, onLogout }: SidebarProps) {
               </a>
             );
           })}
+
+          {showAdmin && (
+            <a
+              href="/admin"
+              title="Usuarios"
+              onClick={(e) => {
+                e.preventDefault();
+                setOpen(false);
+                navigate("/admin");
+              }}
+              className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors ${
+                location.pathname === "/admin"
+                  ? "bg-indigo-500/20 text-indigo-300 font-medium"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+              } ${collapsed ? "justify-center" : ""}`}
+            >
+              <span className="w-5 text-center flex-shrink-0">
+                <Shield size={18} />
+              </span>
+              {!collapsed && <span className="truncate">Usuarios</span>}
+            </a>
+          )}
         </nav>
 
         <div className="px-4 py-3 border-t border-zinc-800 space-y-2">
-          {userEmail && !collapsed && (
-            <p className="text-xs text-zinc-500 truncate">{userEmail}</p>
+          {user && !collapsed && (
+            <p className="text-xs text-zinc-500 truncate">{user.email}</p>
           )}
-          {userEmail ? (
-            <button
-              onClick={onLogout}
-              className="w-full py-2 text-xs text-zinc-400 hover:text-red-400 transition-colors flex items-center gap-2"
-            >
-              <LogOut size={14} />
-              {!collapsed && "Cerrar Sesión"}
-            </button>
+          {user ? (
+            <>
+              <button
+                onClick={onChangePasswordClick}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-violet-400 transition-colors flex items-center gap-2"
+              >
+                <Key size={14} />
+                {!collapsed && "Cambiar Contraseña"}
+              </button>
+              <button
+                onClick={onLogout}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-red-400 transition-colors flex items-center gap-2"
+              >
+                <LogOut size={14} />
+                {!collapsed && "Cerrar Sesión"}
+              </button>
+            </>
           ) : (
             <button
-              onClick={onLoginClick}
+              onClick={() => navigate("/login")}
               className="w-full py-2 text-xs text-zinc-400 hover:text-violet-400 transition-colors flex items-center gap-2"
             >
               <LogIn size={14} />
