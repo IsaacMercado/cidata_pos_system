@@ -44,6 +44,7 @@ export function ProductsPage() {
     description: undefined,
     currentStock: 0,
   });
+  const [stockDisplay, setStockDisplay] = useState(0);
   const { toast } = useToast();
 
   const { register, handleSubmit } = useForm<FormData>({ values: formValues });
@@ -65,6 +66,7 @@ export function ProductsPage() {
 
   function openEdit(product: any) {
     setEditingProduct(product);
+    setStockDisplay(product.currentStock || 0);
     setFormValues({
       code: product.code || "",
       name: product.name || "",
@@ -72,7 +74,7 @@ export function ProductsPage() {
       cost: product.cost || 0,
       categoryId: product.categoryId || undefined,
       description: product.description || undefined,
-      currentStock: product.currentStock || 0,
+      currentStock: 0,
     });
     setModalOpen(true);
   }
@@ -92,7 +94,6 @@ export function ProductsPage() {
           cost: data.cost || 0,
           categoryId: data.categoryId || undefined,
           description: data.description || undefined,
-          currentStock: data.currentStock || 0,
         });
         toast("Producto actualizado", "success");
       } else {
@@ -103,7 +104,6 @@ export function ProductsPage() {
           cost: data.cost || 0,
           categoryId: data.categoryId || undefined,
           description: data.description || undefined,
-          currentStock: data.currentStock || 0,
         });
         toast("Producto creado", "success");
       }
@@ -224,7 +224,7 @@ export function ProductsPage() {
 
           <div className="flex gap-3">
             <Input label="Código" className="flex-1" {...register("code")} />
-            <Input label="Stock" type="number" className="flex-1" {...register("currentStock")} />
+            <Input label="Stock" type="number" className="flex-1" readOnly value={stockDisplay} />
           </div>
 
           <Select label="Categoría" {...register("categoryId")}>

@@ -133,6 +133,41 @@ export const inventoryMovements = sqliteTable("inventory_movements", {
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
+// ─── Purchase Orders ─────────────────────────────────────────────────────────
+export const purchaseOrders = sqliteTable("purchase_orders", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  receiptNumber: text("receipt_number").notNull().unique(),
+  userId: integer("user_id").references(() => users.id),
+  notes: text("notes"),
+  status: text("status").notNull().default("completed"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const purchaseOrderItems = sqliteTable("purchase_order_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  purchaseOrderId: integer("purchase_order_id").notNull().references(() => purchaseOrders.id),
+  productId: integer("product_id").notNull().references(() => products.id),
+  quantity: real("quantity").notNull().default(0),
+  unitCost: real("unit_cost").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ many }) => ({
+  items: many(purchaseOrderItems),
+}));
+
+export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, {
+    fields: [purchaseOrderItems.purchaseOrderId],
+    references: [purchaseOrders.id],
+  }),
+  product: one(products, {
+    fields: [purchaseOrderItems.productId],
+    references: [products.id],
+  }),
+}));
+
 // ─── Low Stock Alerts ────────────────────────────────────────────────────────
 export const lowStockAlerts = sqliteTable("low_stock_alerts", {
   id: integer("id").primaryKey({ autoIncrement: true }),

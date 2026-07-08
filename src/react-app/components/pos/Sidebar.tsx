@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Shield,
   Key,
+  Warehouse,
 } from "lucide-react";
 
 const allLinks = [
@@ -22,6 +23,7 @@ const allLinks = [
   { href: "/customers", label: "Clientes", icon: Users, screen: "customers" },
   { href: "/sales", label: "Ventas", icon: Receipt, screen: "sales" },
   { href: "/restaurants", label: "Restaurante", icon: UtensilsCrossed, screen: "restaurants" },
+  { href: "/purchases", label: "Inventario", icon: Warehouse, screen: "purchases" },
 ];
 
 interface SidebarProps {

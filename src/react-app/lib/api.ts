@@ -141,6 +141,15 @@ export const api = {
       request<any>(`/restaurants/${restaurantId}/tables/${tableId}`, { method: "DELETE" }),
   },
 
+  purchases: {
+    list: () => request<any[]>("/purchases"),
+
+    get: (id: number) => request<any>(`/purchases/${id}`),
+
+    create: (data: { notes?: string; items: { productId: number; quantity: number; unitCost?: number }[] }) =>
+      request<any>("/purchases", { method: "POST", body: JSON.stringify(data) }, false),
+  },
+
   auth: {
     login: (data: { email: string; password: string }) =>
       request<{ user: { id: number; email: string; username: string; name: string; role: string; is_superuser: number }; token: string; success: boolean }>(

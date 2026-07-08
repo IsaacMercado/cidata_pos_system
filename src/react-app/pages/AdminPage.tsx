@@ -9,6 +9,7 @@ const ALL_SCREENS = [
   { value: "customers", label: "Clientes" },
   { value: "sales", label: "Ventas" },
   { value: "restaurants", label: "Restaurante" },
+  { value: "purchases", label: "Inventario" },
   { value: "users", label: "Usuarios" },
 ];
 

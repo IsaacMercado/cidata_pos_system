@@ -15,6 +15,7 @@ const modules = [
   { href: "/customers", label: "Clientes", desc: "Administrar clientes", icon: Users, screen: "customers", color: "bg-blue-500" },
   { href: "/sales", label: "Ventas", desc: "Historial de ventas", icon: Receipt, screen: "sales", color: "bg-amber-500" },
   { href: "/restaurants", label: "Restaurante", desc: "Mesas y pedidos", icon: UtensilsCrossed, screen: "restaurants", color: "bg-rose-500" },
+  { href: "/purchases", label: "Inventario", desc: "Órdenes de compra", icon: Package, screen: "purchases", color: "bg-teal-500" },
   { href: "/admin", label: "Usuarios", desc: "Administración", icon: Shield, screen: "users", color: "bg-cyan-500" },
 ];
 

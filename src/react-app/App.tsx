@@ -16,6 +16,7 @@ import { ProductsPage } from "./pages/ProductsPage";
 import { RestaurantsPage } from "./pages/RestaurantsPage";
 import { SalesPage } from "./pages/SalesPage";
 import { AdminPage } from "./pages/AdminPage";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
 import "./style.css";
 
 export type UserInfo = {
@@ -27,7 +28,7 @@ export type UserInfo = {
   is_superuser: number;
 };
 
-const ALL_SCREENS = ["pos", "products", "customers", "sales", "restaurants"];
+const ALL_SCREENS = ["pos", "products", "customers", "sales", "restaurants", "purchases"];
 
 export function App() {
   const online = useOnlineStatus();
@@ -125,6 +126,7 @@ export function App() {
                 <Route path="/restaurants" component={RestaurantsPage} />
                 <Route path="/restaurants/:id/:view?" component={RestaurantsPage} />
                 <Route path="/admin" component={AdminPage} />
+<Route path="/purchases" component={PurchaseOrdersPage} />
               </>
             )}
           </Switch>
