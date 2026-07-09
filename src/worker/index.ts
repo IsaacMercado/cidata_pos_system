@@ -7,6 +7,7 @@ import customersRouter from "./routes/customers";
 import inventoryRouter from "./routes/inventory";
 import restaurantsRouter from "./routes/restaurants";
 import purchasesRouter from "./routes/purchases";
+import exchangeRouter from "./routes/exchange";
 import authRouter from "./routes/auth";
 
 export interface Env {
@@ -42,6 +43,7 @@ app.route("/api/customers", customersRouter);
 app.route("/api/inventory", inventoryRouter);
 app.route("/api/restaurants", restaurantsRouter);
 app.route("/api/purchases", purchasesRouter);
+app.route("/api/exchange-rate", exchangeRouter);
 app.route("/api", authRouter);
 
 app.notFound(async (c) => {

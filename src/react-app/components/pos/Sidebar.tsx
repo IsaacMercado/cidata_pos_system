@@ -14,6 +14,7 @@ import {
   Shield,
   Key,
   Warehouse,
+  DollarSign,
 } from "lucide-react";
 
 const allLinks = [
@@ -24,6 +25,7 @@ const allLinks = [
   { href: "/sales", label: "Ventas", icon: Receipt, screen: "sales" },
   { href: "/restaurants", label: "Restaurante", icon: UtensilsCrossed, screen: "restaurants" },
   { href: "/purchases", label: "Inventario", icon: Warehouse, screen: "purchases" },
+  { href: "/exchange-rate", label: "Tasa BCV", icon: DollarSign, screen: null },
 ];
 
 interface SidebarProps {

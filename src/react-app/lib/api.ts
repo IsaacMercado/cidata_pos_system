@@ -141,6 +141,16 @@ export const api = {
       request<any>(`/restaurants/${restaurantId}/tables/${tableId}`, { method: "DELETE" }),
   },
 
+  exchange: {
+    get: () => request<Record<string, number>>("/exchange-rate"),
+
+    create: (data: { currencyFrom: string; currencyTo: string; rate: number }) =>
+      request<{ success: boolean }>("/exchange-rate", { method: "POST", body: JSON.stringify(data) }, false),
+
+    scrape: () =>
+      request<{ success: boolean; rate: number }>("/exchange-rate/scrape", { method: "POST" }, false),
+  },
+
   purchases: {
     list: () => request<any[]>("/purchases"),
 

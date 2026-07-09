@@ -1,6 +1,15 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql, relations } from "drizzle-orm";
 
+// ─── Exchange Rates ──────────────────────────────────────────────────────────
+export const exchangeRates = sqliteTable("exchange_rates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  currencyFrom: text("currency_from").notNull().default("USD"),
+  currencyTo: text("currency_to").notNull().default("VES"),
+  rate: real("rate").notNull().default(0),
+  fetchedAt: text("fetched_at").notNull().default(sql`(datetime('now'))`),
+});
+
 // ─── Sequences ───────────────────────────────────────────────────────────────
 export const sequences = sqliteTable("sequences", {
   name: text("name").primaryKey(),
