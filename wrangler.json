@@ -1,5 +1,5 @@
 {
-  "name": "pos-system",
+  "name": "cidata-pos-system",
   "main": "./src/worker/index.ts",
   "compatibility_date": "2025-04-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -12,7 +12,7 @@
     {
       "binding": "DB",
       "database_name": "pos-db",
-      "database_id": "your-database-id-here",
+      "database_id": "c9b55f98-9d93-47a8-9405-1ac753e2c1a9",
       "migrations_dir": "migrations"
     }
   ],
