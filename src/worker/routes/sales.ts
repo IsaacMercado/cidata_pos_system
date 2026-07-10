@@ -57,25 +57,20 @@ async function generateReceiptNumber(db: Env["Variables"]["db"]): Promise<string
 }
 
 function insertSaleItemValues(saleId: number, item: z.infer<typeof saleItemInput>) {
+  const baseSubtotal = item.quantity * item.unitPrice;
+  const discountAmount = baseSubtotal * (item.discountPercent / 100);
+  const subtotal = baseSubtotal - discountAmount;
+
   return {
     saleId,
     productId: item.productId,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     discountPercent: item.discountPercent,
-    discountAmount: sql`ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2)`,
-    subtotal: sql`ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)`,
-    taxAmount: sql`ROUND(
-      ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)
-      * (COALESCE((SELECT tax_rate FROM products WHERE id = ${item.productId}), 0) / 100.0)
-    , 2)`,
-    total: sql`ROUND(
-      ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)
-      + ROUND(
-        ROUND(${item.quantity} * ${item.unitPrice} - ROUND(${item.quantity} * ${item.unitPrice} * (${item.discountPercent} / 100.0), 2), 2)
-        * (COALESCE((SELECT tax_rate FROM products WHERE id = ${item.productId}), 0) / 100.0)
-      , 2)
-    , 2)`,
+    discountAmount: Math.round(discountAmount * 100) / 100,
+    subtotal: Math.round(subtotal * 100) / 100,
+    taxAmount: 0, // will be calculated by trigger
+    total: 0, // will be calculated by trigger
   };
 }
 
@@ -156,9 +151,8 @@ app.post("/", async (c) => {
     .get();
 
   try {
-    for (const item of body.items) {
-      await db.insert(saleItems).values(insertSaleItemValues(result.id, item)).run();
-    }
+    const itemValues = body.items.map((item) => insertSaleItemValues(result.id, item));
+    await db.insert(saleItems).values(itemValues).run();
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);
@@ -221,9 +215,8 @@ app.post("/:id/items", async (c) => {
   }
 
   try {
-    for (const item of body.items) {
-      await db.insert(saleItems).values(insertSaleItemValues(id, item)).run();
-    }
+    const itemValues = body.items.map((item) => insertSaleItemValues(id, item));
+    await db.insert(saleItems).values(itemValues).run();
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);

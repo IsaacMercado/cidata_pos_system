@@ -9,11 +9,12 @@ INSERT OR IGNORE INTO payment_methods (code, name) VALUES
   ('transfer', 'Transferencia Bancaria'),
   ('mobile', 'Pago Móvil');
 
--- Default users (with email + password_hash for web auth)
--- Passwords: admin/admin, cashier1/0000
-INSERT OR IGNORE INTO users (username, name, pin, role, email, password_hash, is_superuser) VALUES
-  ('admin', 'Administrador', '1234', 'admin', 'admin@pos.local', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1),
-  ('cashier1', 'Cajero 1', '0000', 'cashier', 'cashier1@pos.local', '9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0', 0);
+-- Default users (with email + password_hash for web auth, and pin_hash for offline PIN login)
+-- Web passwords: admin/admin, cashier1/0000
+-- PINs (offline): admin=1234, cashier1=0000  (hashes generados con PBKDF2-SHA256, 10000 iter)
+INSERT OR IGNORE INTO users (username, name, pin, pin_hash, role, email, password_hash, is_superuser) VALUES
+  ('admin', 'Administrador', '', 'pbkdf2_sha256$10000$a1b2c3d4e5f600112233445566778899$fbbabfff68ffe2ee542cef4559eb90855842dfdf8653b935d230f5f05ab44918', 'admin', 'admin@pos.local', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1),
+  ('cashier1', 'Cajero 1', '', 'pbkdf2_sha256$10000$b2c3d4e5f600112233445566778899aa$a0c33d85cae12e5e9cd600661fcbd63de2215fb7b3daa777d8621830a8353016', 'cashier', 'cashier1@pos.local', '9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0', 0);
 
 -- Categories
 INSERT OR IGNORE INTO categories (name, description) VALUES

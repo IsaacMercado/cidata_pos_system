@@ -1,10 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { sign } from "hono/jwt";
 import { userPermissions, users } from "../db/schema";
 import type { Env } from "../index";
-import { getJwtPayload, passwordHash } from "../lib/auth";
+import { getJwtPayload, passwordHash, verifyPassword } from "../lib/auth";
 
 const auth = new Hono<Env>();
 
@@ -14,12 +14,12 @@ async function requireSuperuser(c: any, next: any) {
 
   const db = c.get("db");
   const user = await db
-    .select({ id: users.id, isSuperuser: users.isSuperuser })
+    .select({ id: users.id, isSuperuser: users.isSuperuser, isActive: users.isActive })
     .from(users)
     .where(eq(users.username, payload.sub as string))
     .get();
 
-  if (!user || !user.isSuperuser) {
+  if (!user || !user.isSuperuser || !user.isActive) {
     return c.json(
       { error: "Acceso denegado: se requieren permisos de administrador" },
       403,
@@ -49,18 +49,20 @@ auth.post("/login", async (c) => {
       name: users.name,
       role: users.role,
       isSuperuser: users.isSuperuser,
+      isActive: users.isActive,
+      passwordHash: users.passwordHash,
       createdAt: users.createdAt,
     })
     .from(users)
-    .where(
-      and(
-        eq(users.email, email),
-        eq(users.passwordHash, await passwordHash(password)),
-      ),
-    )
+    .where(eq(users.email, email))
     .get();
 
-  if (!user) {
+  if (!user || !user.isActive || !user.passwordHash) {
+    return c.json({ error: "Invalid email or password" }, 401);
+  }
+
+  const valid = await verifyPassword(password, user.passwordHash);
+  if (!valid) {
     return c.json({ error: "Invalid email or password" }, 401);
   }
 
@@ -82,6 +84,60 @@ auth.post("/login", async (c) => {
   return c.json({ user, token, success: true });
 });
 
+auth.post("/login/pin", async (c) => {
+  const db = c.get("db");
+  const { username, pin } = await c.req.json<{
+    username: string;
+    pin: string;
+  }>();
+
+  if (!username || !pin) {
+    return c.json({ error: "username and pin are required" }, 400);
+  }
+
+  const user = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      name: users.name,
+      role: users.role,
+      isSuperuser: users.isSuperuser,
+      isActive: users.isActive,
+      pinHash: users.pinHash,
+    })
+    .from(users)
+    .where(eq(users.username, username))
+    .get();
+
+  if (!user || !user.isActive || !user.pinHash) {
+    return c.json({ error: "Invalid username or PIN" }, 401);
+  }
+
+  const valid = await verifyPassword(pin, user.pinHash);
+  if (!valid) {
+    return c.json({ error: "Invalid username or PIN" }, 401);
+  }
+
+  const WEEK = 7 * 24 * 60 * 60;
+  const payload = {
+    sub: user.username,
+    exp: Math.floor(Date.now() / 1000) + WEEK,
+  };
+  const token = await sign(payload, c.env.JWT_SECRET);
+
+  setCookie(c, "auth_token", token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: WEEK,
+  });
+
+  const { pinHash, ...publicUser } = user;
+  return c.json({ user: publicUser, token, success: true });
+});
+
 auth.get("/users", async (c) => {
   const db = c.get("db");
   const result = await db
@@ -93,6 +149,7 @@ auth.get("/users", async (c) => {
       role: users.role,
       isSuperuser: users.isSuperuser,
       isActive: users.isActive,
+      pinHash: users.pinHash,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -113,6 +170,7 @@ auth.get("/users/me", async (c) => {
       name: users.name,
       role: users.role,
       isSuperuser: users.isSuperuser,
+      isActive: users.isActive,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -120,6 +178,7 @@ auth.get("/users/me", async (c) => {
     .get();
 
   if (!user) return c.json({ error: "User not found" }, 404);
+  if (!user.isActive) return c.json({ error: "User inactive" }, 403);
   return c.json(user);
 });
 
@@ -136,12 +195,13 @@ auth.post("/logout", (c) => {
 
 auth.post("/users", requireSuperuser, async (c) => {
   const db = c.get("db");
-  const { username, name, email, password, role } = await c.req.json<{
+  const { username, name, email, password, role, pin } = await c.req.json<{
     username: string;
     name: string;
     email: string;
     password: string;
     role?: string;
+    pin?: string;
   }>();
 
   if (!username || !name || !email || !password) {
@@ -158,7 +218,8 @@ auth.post("/users", requireSuperuser, async (c) => {
         username,
         name,
         email,
-        pin: "",
+        pin: pin ?? "",
+        pinHash: pin ? await passwordHash(pin) : null,
         passwordHash: await passwordHash(password),
         role: role || "cashier",
       })
@@ -244,17 +305,17 @@ auth.post("/users/change-password", async (c) => {
   }
 
   const user = await db
-    .select({ id: users.id })
+    .select({ id: users.id, passwordHash: users.passwordHash })
     .from(users)
-    .where(
-      and(
-        eq(users.username, payload.sub as string),
-        eq(users.passwordHash, (await passwordHash(currentPassword)) as string),
-      ),
-    )
+    .where(eq(users.username, payload.sub as string))
     .get();
 
-  if (!user) {
+  if (!user || !user.passwordHash) {
+    return c.json({ error: "User not found" }, 404);
+  }
+
+  const valid = await verifyPassword(currentPassword, user.passwordHash);
+  if (!valid) {
     return c.json({ error: "Current password is incorrect" }, 401);
   }
 

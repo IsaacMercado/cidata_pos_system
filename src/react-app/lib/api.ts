@@ -168,6 +168,13 @@ export const api = {
         false,
       ),
 
+    loginPin: (data: { username: string; pin: string }) =>
+      request<{ user: { id: number; email: string; username: string; name: string; role: string; isSuperuser: number; is_superuser?: number }; token: string; success: boolean }>(
+        "/login/pin",
+        { method: "POST", body: JSON.stringify(data) },
+        false,
+      ),
+
     me: () =>
       request<{ id: number; email: string; username: string; name: string; role: string; isSuperuser: number; is_superuser?: number } | null>(
         "/users/me",

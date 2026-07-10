@@ -300,7 +300,7 @@ export function PosPage() {
         </Button>
       </div>
 
-      <div className="flex-1 flex flex-col lg:border-r border-zinc-200 pb-20 lg:pb-0">
+      <div className="flex-1 flex flex-col lg:border-r border-zinc-200 pb-20 lg:pb-0 min-h-0">
         <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-zinc-200 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -340,7 +340,7 @@ export function PosPage() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 content-start">
+        <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 content-start min-h-0">
           {filtered.map((product) => (
             <button
               key={product.id}
@@ -414,7 +414,7 @@ export function PosPage() {
           </Button>
         </div>
 
-        <div className="flex-1 overflow-auto p-3 space-y-2">
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
           {activeOrder.items.map((item) => (
             <div key={item.product.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-zinc-200">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>

@@ -16,9 +16,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vars": {
-    "JWT_SECRET": "your-jwt-secret-here"
-  },
   "observability": {
     "enabled": true
   }

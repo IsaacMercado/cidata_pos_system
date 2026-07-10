@@ -2,6 +2,20 @@ import { verify } from "hono/jwt";
 import { getCookie } from "hono/cookie";
 import type { Context, Next } from "hono";
 
+// Iteraciones ajustadas al límite de CPU del free tier de Cloudflare (~10ms/req).
+// El login online es un evento raro; el resto de requests solo verifica el JWT (microsegundos).
+// El PIN offline se verifica en el dispositivo (sin límite de CPU), reutilizando este mismo formato.
+export const PBKDF2_ITERATIONS = 10_000;
+const PBKDF2_ALGO = { name: "PBKDF2", hash: "SHA-256" } as const;
+
+function arrayToHex(arr: Uint8Array): string {
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function hexToArray(hex: string): Uint8Array {
+  return new Uint8Array(hex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)));
+}
+
 export const getJwtPayload = async (c: Context) => {
   let token: string | undefined;
 
@@ -33,14 +47,41 @@ export const middlewareJwtPayload = async (c: Context, next: Next) => {
   await next();
 };
 
-export const passwordHash = async (password: string) => {
-  const hash = await crypto.subtle
-    .digest("SHA-256", new TextEncoder().encode(password))
-    .then((hash) => {
-      const hex = Array.from(new Uint8Array(hash))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      return hex;
-    });
-  return hash;
+export const passwordHash = async (password: string, salt?: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const saltBytes = salt ? hexToArray(salt) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), PBKDF2_ALGO, false, [
+    "deriveBits",
+  ]);
+  const hash = await crypto.subtle.deriveBits(
+    { ...PBKDF2_ALGO, salt: saltBytes, iterations: PBKDF2_ITERATIONS },
+    key,
+    256,
+  );
+  return `pbkdf2_sha256$${PBKDF2_ITERATIONS}$${arrayToHex(saltBytes)}$${arrayToHex(new Uint8Array(hash))}`;
 };
+
+export const verifyPassword = async (password: string, stored: string): Promise<boolean> => {
+  if (!stored.startsWith("pbkdf2_sha256$")) return false;
+  const [, , iterationsStr, saltHex, hashHex] = stored.split("$");
+  const iterations = parseInt(iterationsStr, 10);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), PBKDF2_ALGO, false, [
+    "deriveBits",
+  ]);
+  const hash = await crypto.subtle.deriveBits(
+    { ...PBKDF2_ALGO, salt: hexToArray(saltHex), iterations },
+    key,
+    256,
+  );
+  const computed = arrayToHex(new Uint8Array(hash));
+  return timingSafeEqual(computed, hashHex);
+};
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}

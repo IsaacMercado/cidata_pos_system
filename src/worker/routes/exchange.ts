@@ -40,33 +40,4 @@ app.post("/", async (c) => {
   return c.json({ success: true });
 });
 
-app.post("/scrape", async (c) => {
-  const db = c.get("db");
-
-  try {
-    const response = await fetch("https://www.bcv.org.ve/");
-    const text = await response.text();
-    const usdMatch = text.match(/<span>\s*USD\s*<\/span>.*?<strong[^>]*>\s*([\d.,]+)/s);
-
-    if (!usdMatch) {
-      return c.json({ success: false, error: "No se pudo parsear la tasa del BCV" }, 502);
-    }
-
-    const usd = parseFloat(usdMatch[1].replace(",", "."));
-    if (!usd || usd <= 0) {
-      return c.json({ success: false, error: "Tasa inválida" }, 502);
-    }
-
-    await db.insert(exchangeRates).values({
-      currencyFrom: "USD",
-      currencyTo: "VES",
-      rate: usd,
-    }).run();
-
-    return c.json({ success: true, rate: usd });
-  } catch (error) {
-    return c.json({ success: false, error: "Error al conectar con el BCV" }, 502);
-  }
-});
-
 export default app;

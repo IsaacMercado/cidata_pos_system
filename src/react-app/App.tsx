@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { Route, Switch, useLocation } from "wouter-preact";
-import { LoginPage } from "./pages/LoginPage";
+import { LoginPage, type LoginResult } from "./pages/LoginPage";
 import { WelcomePage } from "./pages/WelcomePage";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import { OfflineBanner } from "./components/OfflineBanner";
@@ -8,7 +8,8 @@ import { Sidebar } from "./components/pos/Sidebar";
 import { ToastProvider } from "./components/pos/Toast";
 import { Loading } from "./components/ui";
 import { api } from "./lib/api";
-import { syncPendingOps } from "./lib/db";
+import { syncPendingOps, cacheOperators, type CachedOperator } from "./lib/db";
+import { loadSession, saveSession, clearSession } from "./lib/session";
 import { useOnlineStatus } from "./lib/useOnlineStatus";
 import { CustomersPage } from "./pages/CustomersPage";
 import { PosPage } from "./pages/PosPage";
@@ -31,6 +32,16 @@ export type UserInfo = {
 
 const ALL_SCREENS = ["pos", "products", "customers", "sales", "restaurants", "purchases"];
 
+function normalizeUser(u: any): UserInfo {
+  return { ...u, is_superuser: u.isSuperuser ?? u.is_superuser ?? 0 };
+}
+
+// Fallback permissions when offline and not cached: superuser gets everything,
+// cashier keeps operating screens so the shift can continue.
+function offlinePermissions(u: UserInfo): string[] {
+  return u.is_superuser ? [...ALL_SCREENS, "users"] : ["pos", "customers", "sales"];
+}
+
 export function App() {
   const online = useOnlineStatus();
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -39,14 +50,49 @@ export function App() {
   const [restoring, setRestoring] = useState(true);
   const [, navigate] = useLocation();
 
+  const refreshOperatorsCache = async () => {
+    try {
+      const users = await api.auth.list();
+      const ops: CachedOperator[] = users.map((u: any) => ({
+        id: u.id,
+        username: u.username,
+        name: u.name,
+        role: u.role,
+        isSuperuser: u.isSuperuser ?? u.is_superuser ?? 0,
+        pinHash: u.pinHash ?? "",
+      }));
+      await cacheOperators(ops);
+    } catch {}
+  };
+
   useEffect(() => {
-    api.auth.me().then((u: any) => {
-      if (u) {
-        const normalized = { ...u, is_superuser: u.isSuperuser ?? u.is_superuser ?? 0 };
-        setUser(normalized);
-        loadPermissions(normalized);
-      }
-    }).catch(() => {}).finally(() => setRestoring(false));
+    const session = loadSession();
+    if (session) {
+      setUser(session.user);
+      setPermissions(
+        session.permissions?.length ? session.permissions : offlinePermissions(session.user),
+      );
+      setRestoring(false);
+      if (online) refreshOperatorsCache().catch(() => {});
+      return;
+    }
+
+    if (!online) {
+      setRestoring(false);
+      return;
+    }
+
+    api.auth
+      .me()
+      .then((u: any) => {
+        if (u) {
+          const normalized = normalizeUser(u);
+          setUser(normalized);
+          loadPermissions(normalized);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setRestoring(false));
   }, []);
 
   useEffect(() => {
@@ -55,16 +101,12 @@ export function App() {
     }
   }, [restoring, user]);
 
-  const loadPermissions = async (u: UserInfo) => {
-    if (u.is_superuser) {
-      setPermissions([...ALL_SCREENS, "users"]);
-      return;
-    }
+  const loadPermissions = async (u: UserInfo): Promise<string[]> => {
+    if (u.is_superuser) return [...ALL_SCREENS, "users"];
     try {
-      const screens = await api.auth.getPermissions(u.id);
-      setPermissions(screens);
+      return await api.auth.getPermissions(u.id);
     } catch {
-      setPermissions([]);
+      return [];
     }
   };
 
@@ -74,16 +116,33 @@ export function App() {
     }
   }, [online]);
 
-  const handleLogin = async (u: any) => {
-    const normalized = { ...u, is_superuser: u.isSuperuser ?? u.is_superuser ?? 0 };
+  const handleLogin = async (result: LoginResult) => {
+    const normalized = normalizeUser(result.user);
     setUser(normalized);
-    await loadPermissions(normalized);
+
+    let perms: string[];
+    if (result.offline) {
+      perms = offlinePermissions(normalized);
+    } else {
+      perms = await loadPermissions(normalized);
+      await refreshOperatorsCache();
+    }
+    setPermissions(perms);
+
+    saveSession({
+      user: normalized,
+      token: result.token,
+      offline: !!result.offline,
+      permissions: perms,
+      cachedAt: new Date().toISOString(),
+    });
   };
 
   const handleLogout = async () => {
     try {
       await api.auth.logout();
     } catch {}
+    clearSession();
     setUser(null);
     setPermissions([]);
     navigate("/login");

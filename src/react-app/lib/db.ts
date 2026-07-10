@@ -18,6 +18,18 @@ interface StoreSchema {
     key: number;
     value: any;
   };
+  operators: {
+    key: number;
+    value: {
+      id: number;
+      username: string;
+      name: string;
+      role: string;
+      isSuperuser: number;
+      pinHash: string;
+    };
+    indexes: { "by-username": string };
+  };
   pending_ops: {
     key: number;
     value: {
@@ -53,6 +65,10 @@ function getDb() {
             keyPath: "id",
             autoIncrement: true,
           });
+        }
+        if (!db.objectStoreNames.contains("operators")) {
+          const operators = db.createObjectStore("operators", { keyPath: "id" });
+          operators.createIndex("by-username", "username");
         }
         if (!db.objectStoreNames.contains("restaurants")) {
           db.createObjectStore("restaurants", { keyPath: "id" });
@@ -190,6 +206,35 @@ export async function getCachedTables(restaurantId: number): Promise<any[]> {
   const db = await getDb();
   const index = db.transaction("restaurant_tables").store.index("by-restaurant");
   return index.getAll(restaurantId);
+}
+
+// ─── Operators cache (for offline PIN login) ────────────────────────────────
+
+export interface CachedOperator {
+  id: number;
+  username: string;
+  name: string;
+  role: string;
+  isSuperuser: number;
+  pinHash: string;
+}
+
+export async function cacheOperators(operators: CachedOperator[]) {
+  const db = await getDb();
+  const tx = db.transaction("operators", "readwrite");
+  for (const op of operators) await tx.store.put(op);
+  await tx.done;
+}
+
+export async function getCachedOperator(username: string): Promise<CachedOperator | undefined> {
+  const db = await getDb();
+  const index = db.transaction("operators").store.index("by-username");
+  return index.get(username);
+}
+
+export async function getCachedOperatorCount(): Promise<number> {
+  const db = await getDb();
+  return db.count("operators");
 }
 
 // ─── Clear all ─────────────────────────────────────────────────────────────

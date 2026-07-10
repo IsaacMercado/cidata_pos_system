@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createDb } from "./db";
+import { middlewareJwtPayload } from "./lib/auth";
 import productsRouter from "./routes/products";
 import salesRouter from "./routes/sales";
 import customersRouter from "./routes/customers";
@@ -25,12 +26,61 @@ export interface Env {
 
 const app = new Hono<Env>();
 
-app.use("*", cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://*.pages.dev",
+];
+
+const nativeAppSchemes = ["capacitor", "ionic", "file"];
+
+function isAllowedOrigin(origin: string): boolean {
+  return allowedOrigins.some((o) =>
+    o === origin || (o.includes("*") && origin.match(new RegExp("^" + o.replace(".", "\\.").replace("*", ".*") + "$")))
+  );
+}
+
+app.use("*", cors({
+  origin: (origin, c) => {
+    if (!origin) return "*";
+
+    try {
+      const url = new URL(origin);
+      const scheme = url.protocol.replace(":", "");
+
+      if (nativeAppSchemes.includes(scheme)) {
+        return origin;
+      }
+
+      if (scheme === "http" || scheme === "https") {
+        return isAllowedOrigin(origin) ? origin : null;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  },
+  allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+  exposeHeaders: ["Content-Length"],
+  maxAge: 86400,
+  credentials: true,
+}));
 
 app.use("*", async (c, next) => {
   c.set("db", createDb(c.env.DB));
   c.set("env", c.env);
   await next();
+});
+
+// Auth global: protege todo /api/* excepto los endpoints de login (públicos).
+app.use("/api/*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (path === "/api/login" || path === "/api/login/pin") {
+    return next();
+  }
+  return middlewareJwtPayload(c, next);
 });
 
 app.get("/health", (c) =>
