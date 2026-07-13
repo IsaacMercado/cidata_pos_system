@@ -81,7 +81,8 @@ auth.post("/login", async (c) => {
     maxAge: WEEK,
   });
 
-  return c.json({ user, token, success: true });
+  const { passwordHash: _, ...publicUser } = user;
+  return c.json({ user: publicUser, token, success: true });
 });
 
 auth.post("/login/pin", async (c) => {

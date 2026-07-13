@@ -143,12 +143,6 @@ export const api = {
 
   exchange: {
     get: () => request<Record<string, number>>("/exchange-rate"),
-
-    create: (data: { currencyFrom: string; currencyTo: string; rate: number }) =>
-      request<{ success: boolean }>("/exchange-rate", { method: "POST", body: JSON.stringify(data) }, false),
-
-    scrape: () =>
-      request<{ success: boolean; rate: number }>("/exchange-rate/scrape", { method: "POST" }, false),
   },
 
   purchases: {

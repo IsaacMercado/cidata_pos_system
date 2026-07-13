@@ -60,6 +60,7 @@ function insertSaleItemValues(saleId: number, item: z.infer<typeof saleItemInput
   const baseSubtotal = item.quantity * item.unitPrice;
   const discountAmount = baseSubtotal * (item.discountPercent / 100);
   const subtotal = baseSubtotal - discountAmount;
+  const roundedSubtotal = Math.round(subtotal * 100) / 100;
 
   return {
     saleId,
@@ -68,9 +69,9 @@ function insertSaleItemValues(saleId: number, item: z.infer<typeof saleItemInput
     unitPrice: item.unitPrice,
     discountPercent: item.discountPercent,
     discountAmount: Math.round(discountAmount * 100) / 100,
-    subtotal: Math.round(subtotal * 100) / 100,
-    taxAmount: 0, // will be calculated by trigger
-    total: 0, // will be calculated by trigger
+    subtotal: roundedSubtotal,
+    taxAmount: 0,
+    total: roundedSubtotal,
   };
 }
 

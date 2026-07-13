@@ -1,28 +1,27 @@
 import {
-    Coffee,
-    Milk,
-    Minus,
-    Package,
-    Plus,
-    Popcorn,
-    Sandwich,
-    Search,
-    ShoppingCart,
-    Sparkles,
-    X,
+  Coffee,
+  Milk,
+  Minus,
+  Package,
+  Plus,
+  Popcorn,
+  Sandwich,
+  Search,
+  ShoppingCart,
+  Sparkles,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import { useLiveRxQuery } from 'rxdb/plugins/react';
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
 import { Button, Loading, Modal } from "../components/ui";
 import { api } from "../lib/api";
-import {
-    addPendingOp,
-    cacheProducts,
-    getCachedProducts,
-} from "../lib/db";
+import { addPendingOp } from "../lib/db";
+import { type ProductDoc } from "../lib/database";
 import type { CartItem, ProductWithCategory, SaleWithItems } from "../lib/types";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
+
 
 interface Order {
   id: number;
@@ -70,7 +69,6 @@ export function PosPage() {
   const [activeOrderId, setActiveOrderId] = useState<number>(1);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [receiptSale, setReceiptSale] = useState<SaleWithItems | null>(null);
@@ -80,39 +78,38 @@ export function PosPage() {
   const [currency, setCurrency] = useState<string>("USD");
   const online = useOnlineStatus();
   const { toast } = useToast();
+  const productLiveQuery = useMemo(() => ({
+      collection: 'products',
+      query: {
+          selector: { isActive: 1 },
+          sort: [{ name: 'asc' }],
+      }
+  }), []);
+  const { results, loading } = useLiveRxQuery<ProductDoc>(productLiveQuery);
 
   const rate = exchangeRate || 1;
 
   useEffect(() => {
-    async function load() {
-      try {
-        const data = await api.products.list();
-        await cacheProducts(data);
-        const mapped: ProductWithCategory[] = data.map((p) => ({
-          ...p,
-          category: p.category || null,
-        }));
-        setProducts(mapped.filter((p) => p.isActive));
-      } catch {
-        const cached = await getCachedProducts();
-        const mapped: ProductWithCategory[] = cached.map((p) => ({
-          ...p,
-          category: p.category || null,
-        }));
-        setProducts(mapped.filter((p) => p.isActive));
-        if (cached.length > 0) {
-          toast("Modo offline — productos cacheados", "success");
-        }
-      }
-      setLoading(false);
+    const mapped = results
+      .map((p) => {
+        const d = p.toJSON() as ProductDoc;
+        return {
+          ...d,
+          category: d.categoryName ? { name: d.categoryName } : null,
+        };
+      })
+      .filter((p) => p.isActive) as unknown as ProductWithCategory[];
+    setProducts(mapped);
+    if (results.length > 0 && !navigator.onLine) {
+      toast("Modo offline — catálogo sincronizado", "success");
     }
+  }, [results, toast]);
 
+  useEffect(() => {
     api.exchange.get().then((r) => {
       const usdRate = (r as any)?.USD || 0;
       if (usdRate > 0) setExchangeRate(usdRate);
     }).catch(() => {});
-
-    load();
   }, []);
 
   const activeOrder = orders.find((o) => o.id === activeOrderId) || orders[0];

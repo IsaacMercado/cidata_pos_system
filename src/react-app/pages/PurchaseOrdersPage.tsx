@@ -246,7 +246,7 @@ function ViewPurchaseOrder({ order, onClose }: { order: any; onClose: () => void
                   <div className="text-xs text-slate-500">{item.product_code}</div>
                 </td>
                 <td className="py-2 text-right text-slate-300">{item.quantity}</td>
-                <td className="py-2 text-right text-slate-300">${item.unit_cost.toFixed(2)}</td>
+                <td className="py-2 text-right text-slate-300">${(item.unit_cost ?? 0).toFixed(2)}</td>
               </tr>
             ))}
           </tbody>

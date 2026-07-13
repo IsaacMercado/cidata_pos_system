@@ -1,24 +1,25 @@
 import { useEffect, useState } from "preact/hooks";
 import { Route, Switch, useLocation } from "wouter-preact";
-import { LoginPage, type LoginResult } from "./pages/LoginPage";
-import { WelcomePage } from "./pages/WelcomePage";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { RxDatabaseProviderWrapper } from "./components/RxDatabaseProviderWrapper";
 import { Sidebar } from "./components/pos/Sidebar";
 import { ToastProvider } from "./components/pos/Toast";
 import { Loading } from "./components/ui";
 import { api } from "./lib/api";
-import { syncPendingOps, cacheOperators, type CachedOperator } from "./lib/db";
-import { loadSession, saveSession, clearSession } from "./lib/session";
+import { syncPendingOps } from "./lib/db";
+import { clearSession, loadSession, saveSession } from "./lib/session";
 import { useOnlineStatus } from "./lib/useOnlineStatus";
+import { AdminPage } from "./pages/AdminPage";
 import { CustomersPage } from "./pages/CustomersPage";
+import { ExchangeRatePage } from "./pages/ExchangeRatePage";
+import { LoginPage, type LoginResult } from "./pages/LoginPage";
 import { PosPage } from "./pages/PosPage";
 import { ProductsPage } from "./pages/ProductsPage";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
 import { RestaurantsPage } from "./pages/RestaurantsPage";
 import { SalesPage } from "./pages/SalesPage";
-import { AdminPage } from "./pages/AdminPage";
-import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
-import { ExchangeRatePage } from "./pages/ExchangeRatePage";
+import { WelcomePage } from "./pages/WelcomePage";
 import "./style.css";
 
 export type UserInfo = {
@@ -50,21 +51,6 @@ export function App() {
   const [restoring, setRestoring] = useState(true);
   const [, navigate] = useLocation();
 
-  const refreshOperatorsCache = async () => {
-    try {
-      const users = await api.auth.list();
-      const ops: CachedOperator[] = users.map((u: any) => ({
-        id: u.id,
-        username: u.username,
-        name: u.name,
-        role: u.role,
-        isSuperuser: u.isSuperuser ?? u.is_superuser ?? 0,
-        pinHash: u.pinHash ?? "",
-      }));
-      await cacheOperators(ops);
-    } catch {}
-  };
-
   useEffect(() => {
     const session = loadSession();
     if (session) {
@@ -73,7 +59,6 @@ export function App() {
         session.permissions?.length ? session.permissions : offlinePermissions(session.user),
       );
       setRestoring(false);
-      if (online) refreshOperatorsCache().catch(() => {});
       return;
     }
 
@@ -93,13 +78,13 @@ export function App() {
       })
       .catch(() => {})
       .finally(() => setRestoring(false));
-  }, []);
+  }, [online]);
 
   useEffect(() => {
     if (!restoring && !user) {
       navigate("/login");
     }
-  }, [restoring, user]);
+  }, [navigate, restoring, user]);
 
   const loadPermissions = async (u: UserInfo): Promise<string[]> => {
     if (u.is_superuser) return [...ALL_SCREENS, "users"];
@@ -125,10 +110,8 @@ export function App() {
       perms = offlinePermissions(normalized);
     } else {
       perms = await loadPermissions(normalized);
-      await refreshOperatorsCache();
     }
     setPermissions(perms);
-
     saveSession({
       user: normalized,
       token: result.token,
@@ -151,6 +134,7 @@ export function App() {
   if (restoring) return <Loading fullPage text="Restaurando sesión..." />;
 
   return (
+    <RxDatabaseProviderWrapper>
     <ToastProvider>
       <div className="flex min-h-dvh flex-col md:flex-row">
         {!online && <OfflineBanner />}
@@ -200,6 +184,7 @@ export function App() {
           onClose={() => setPasswordModalOpen(false)}
         />
       </div>
-    </ToastProvider>
+      </ToastProvider>
+    </RxDatabaseProviderWrapper>
   );
 }

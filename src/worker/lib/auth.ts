@@ -1,6 +1,6 @@
-import { verify } from "hono/jwt";
-import { getCookie } from "hono/cookie";
 import type { Context, Next } from "hono";
+import { getCookie } from "hono/cookie";
+import { verify } from "hono/jwt";
 
 // Iteraciones ajustadas al límite de CPU del free tier de Cloudflare (~10ms/req).
 // El login online es un evento raro; el resto de requests solo verifica el JWT (microsegundos).
@@ -63,7 +63,10 @@ export const passwordHash = async (password: string, salt?: string): Promise<str
 
 export const verifyPassword = async (password: string, stored: string): Promise<boolean> => {
   if (!stored.startsWith("pbkdf2_sha256$")) return false;
-  const [, , iterationsStr, saltHex, hashHex] = stored.split("$");
+  const parts = stored.split("$");
+  const iterationsStr = parts[1];
+  const saltHex = parts[2];
+  const hashHex = parts[3];
   const iterations = parseInt(iterationsStr, 10);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), PBKDF2_ALGO, false, [
     "deriveBits",

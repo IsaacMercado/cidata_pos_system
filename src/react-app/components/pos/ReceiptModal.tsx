@@ -56,7 +56,7 @@ export function ReceiptModal({
 
         {sale.customer && (
           <p className="text-sm text-zinc-600">
-            <span className="text-zinc-400">Cliente:</span> {sale.customer.name}
+            <span className="text-zinc-400">Cliente:</span> {(sale.customer as any)?.name ?? '—'}
           </p>
         )}
 
@@ -71,7 +71,7 @@ export function ReceiptModal({
           <tbody>
             {(sale.items || []).map((item) => (
               <tr key={item.id} className="border-t border-zinc-100">
-                <td className="py-1.5 text-zinc-800">{item.product.name}</td>
+                <td className="py-1.5 text-zinc-800">{(item as any).name ?? item.product?.name ?? '—'}</td>
                 <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
                 <td className="py-1.5 text-right font-medium">
                   ${item.subtotal.toFixed(2)}

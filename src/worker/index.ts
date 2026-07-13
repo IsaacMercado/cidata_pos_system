@@ -2,14 +2,15 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createDb } from "./db";
 import { middlewareJwtPayload } from "./lib/auth";
-import productsRouter from "./routes/products";
-import salesRouter from "./routes/sales";
-import customersRouter from "./routes/customers";
-import inventoryRouter from "./routes/inventory";
-import restaurantsRouter from "./routes/restaurants";
-import purchasesRouter from "./routes/purchases";
-import exchangeRouter from "./routes/exchange";
 import authRouter from "./routes/auth";
+import customersRouter from "./routes/customers";
+import exchangeRouter from "./routes/exchange";
+import inventoryRouter from "./routes/inventory";
+import productsRouter from "./routes/products";
+import purchasesRouter from "./routes/purchases";
+import replicateRouter from "./routes/replicate";
+import restaurantsRouter from "./routes/restaurants";
+import salesRouter from "./routes/sales";
 
 export interface Env {
   Bindings: {
@@ -28,8 +29,10 @@ const app = new Hono<Env>();
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:8787",
   "http://localhost:3000",
   "https://*.pages.dev",
+  "https://*.workers.dev",
 ];
 
 const nativeAppSchemes = ["capacitor", "ionic", "file"];
@@ -95,6 +98,7 @@ app.route("/api/restaurants", restaurantsRouter);
 app.route("/api/purchases", purchasesRouter);
 app.route("/api/exchange-rate", exchangeRouter);
 app.route("/api", authRouter);
+app.route("/api/replicate", replicateRouter);
 
 app.notFound(async (c) => {
   const url = new URL(c.req.url);

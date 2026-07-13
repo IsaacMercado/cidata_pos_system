@@ -1,21 +1,14 @@
-import { useEffect, useRef, useState } from "preact/hooks";
 import type { JSX } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
+import { useRxCollection } from 'rxdb/plugins/react';
 import { useLocation, useRoute } from "wouter-preact";
-import { api } from "../lib/api";
-import {
-  cacheProducts,
-  cacheRestaurantTables,
-  cacheRestaurants,
-  getCachedProducts,
-  getCachedRestaurant,
-  getCachedRestaurants,
-  getCachedTables,
-} from "../lib/db";
-import { paymentMethods } from "../lib/paymentMethods";
-import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { useToast } from "../components/pos/Toast";
 import { Button, Card } from "../components/ui";
+import { api } from "../lib/api";
+import { type ProductDoc, type RestaurantDoc, type RestaurantTableDoc } from '../lib/database';
+import { paymentMethods } from "../lib/paymentMethods";
+import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 type TableShape = "circle" | "rectangle";
 type TableForm = { name: string; capacity: number; shape: TableShape };
@@ -72,6 +65,10 @@ export function RestaurantsPage() {
   const [dragging, setDragging] = useState<number | null>(null);
   const dragRef = useRef({ startX: 0, startY: 0, tableId: 0 });
 
+  const restaurantCollection = useRxCollection<RestaurantDoc>("restaurants");
+  const restaurantTableCollection = useRxCollection<RestaurantTableDoc>("restaurant_tables");
+  const productsCollection = useRxCollection<ProductDoc>("products");
+
   useEffect(() => {
     if (editingId) {
       void loadRestaurant(editingId);
@@ -88,46 +85,40 @@ export function RestaurantsPage() {
     if (!selectedTableId || !tables.some((t: any) => t.id === selectedTableId)) {
       void selectTable(tables[0]);
     }
-  }, [restaurant, view]);
+  }, [restaurant, view, selectTable, selectedTableId]);
 
   async function loadList() {
-    if (online) {
-      try {
-        const data = await api.restaurants.list();
-        await cacheRestaurants(data);
-        setList(data);
-        return;
-      } catch {}
+    if (!restaurantCollection) {
+      setList([]);
+      return;
     }
-    setList(await getCachedRestaurants());
+    const rows = await restaurantCollection.find().exec();
+    setList(
+      rows.map((r) => {
+        const d = r.toJSON();
+        return { id: d.id, name: d.name, description: d.description };
+      }),
+    );
   }
 
   async function loadRestaurant(id: number) {
-    if (online) {
-      try {
-        const data = await api.restaurants.get(id);
-        await cacheRestaurants([{ id: data.id, name: data.name, description: data.description }]);
-        await cacheRestaurantTables(id, data.tables || []);
-        setRestaurant(data);
-        return;
-      } catch {}
+    if (!restaurantCollection || !restaurantTableCollection) {
+      setRestaurant(null);
+      return;
     }
-
-    const cachedRestaurant = await getCachedRestaurant(id);
-    const tables = await getCachedTables(id);
-    setRestaurant(cachedRestaurant ? { ...cachedRestaurant, tables } : { ...buildEmptyRestaurant(id), tables });
+    const r = await restaurantCollection.findOne(String(id)).exec();
+    const tables = await restaurantTableCollection.find({ selector: { restaurantId: id } }).exec();
+    const rest = r ? r.toJSON() : buildEmptyRestaurant(id);
+    setRestaurant({ ...rest, tables: tables.map((t) => t.toJSON()) });
   }
 
   async function loadProducts() {
-    if (online) {
-      try {
-        const data = await api.products.list({});
-        await cacheProducts(data);
-        setProducts(data);
-        return;
-      } catch {}
+    if (!productsCollection) {
+      setProducts([]);
+      return;
     }
-    setProducts(await getCachedProducts());
+    const rows = await productsCollection.find({ selector: { isActive: 1 } }).exec();
+    setProducts(rows.map((r) => r.toJSON()));
   }
 
   const onSaveRestaurant: SubmitHandler<{ name: string; description: string }> = async (data) => {

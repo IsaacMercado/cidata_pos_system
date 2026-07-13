@@ -13,8 +13,8 @@ INSERT OR IGNORE INTO payment_methods (code, name) VALUES
 -- Web passwords: admin/admin, cashier1/0000
 -- PINs (offline): admin=1234, cashier1=0000  (hashes generados con PBKDF2-SHA256, 10000 iter)
 INSERT OR IGNORE INTO users (username, name, pin, pin_hash, role, email, password_hash, is_superuser) VALUES
-  ('admin', 'Administrador', '', 'pbkdf2_sha256$10000$a1b2c3d4e5f600112233445566778899$fbbabfff68ffe2ee542cef4559eb90855842dfdf8653b935d230f5f05ab44918', 'admin', 'admin@pos.local', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 1),
-  ('cashier1', 'Cajero 1', '', 'pbkdf2_sha256$10000$b2c3d4e5f600112233445566778899aa$a0c33d85cae12e5e9cd600661fcbd63de2215fb7b3daa777d8621830a8353016', 'cashier', 'cashier1@pos.local', '9af15b336e6a9619928537df30b2e6a2376569fcf9d7e773eccede65606529a0', 0);
+  ('admin', 'Administrador', '', 'pbkdf2_sha256$10000$a1b2c3d4e5f600112233445566778899$fbbabfff68ffe2ee542cef4559eb90855842dfdf8653b935d230f5f05ab44918', 'admin', 'admin@pos.local', 'pbkdf2_sha256$10000$9fe0b18d9df19f264d6c1effe2c1a13d$b96a1b24317f62b5c3d38edc0505831e454ce06a30c64c829c292755e37ec316', 1),
+  ('cashier1', 'Cajero 1', '', 'pbkdf2_sha256$10000$b2c3d4e5f600112233445566778899aa$a0c33d85cae12e5e9cd600661fcbd63de2215fb7b3daa777d8621830a8353016', 'cashier', 'cashier1@pos.local', 'pbkdf2_sha256$10000$14e5eb625f0ba87656c032a537e91871$e87d42e714ce83b169dedbe24c3528ec5da9a4d3484d115700c4975309265ca6', 0);
 
 -- Categories
 INSERT OR IGNORE INTO categories (name, description) VALUES

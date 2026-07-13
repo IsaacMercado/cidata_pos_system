@@ -1,10 +1,12 @@
 import { useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
+import { useRxCollection } from 'rxdb/plugins/react';
 import { useLocation } from "wouter-preact";
 import { Button, Input } from "../components/ui";
 import { api } from "../lib/api";
+import { type OperatorDoc } from "../lib/database";
 import { verifyPin } from "../lib/pin";
-import { getCachedOperator } from "../lib/db";
+
 
 interface EmailForm {
   email: string;
@@ -30,11 +32,10 @@ export interface LoginResult {
   offline?: boolean;
 }
 
-export function LoginPage({
-  onLogin,
-}: {
+export function LoginPage({ onLogin }: {
   onLogin: (result: LoginResult) => Promise<void>;
 }) {
+  const collection = useRxCollection<OperatorDoc>('operators');
   const [tab, setTab] = useState<"email" | "pin">("pin");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -86,16 +87,24 @@ export function LoginPage({
     }
 
     try {
-      const cached = await getCachedOperator(username);
-      if (!cached) {
+      if (!collection) {
+        setError("No se pudo acceder a la base de datos local.");
+        return;
+      };
+
+      const op = await collection.findOne({ selector: { username } }).exec();
+      if (!op) {
         setError("Sin conexión y operador no sincronizado. Conéctate a internet.");
         return;
       }
+
+      const cached = op.toJSON();
       const ok = await verifyPin(pin, cached.pinHash);
       if (!ok) {
         setError("PIN incorrecto");
         return;
       }
+
       await onLogin({
         user: {
           id: cached.id,
