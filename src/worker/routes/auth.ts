@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { sign } from "hono/jwt";
-import { userPermissions, users } from "../db/schema";
+import { userPermissions, userPermissions, users } from "../db/schema";
 import type { Env } from "../index";
 import { getJwtPayload, passwordHash, verifyPassword } from "../lib/auth";
 
@@ -145,20 +145,32 @@ auth.post("/login/pin", async (c) => {
 
 auth.get("/users", async (c) => {
   const db = c.get("db");
-  const result = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      username: users.username,
-      name: users.name,
-      role: users.role,
-      isSuperuser: users.isSuperuser,
-      isActive: users.isActive,
-      pinHash: users.pinHash,
-      createdAt: users.createdAt,
-    })
-    .from(users)
-    .orderBy(users.createdAt);
+
+  const result = await db.query.users.findMany({
+    with: { userPermissions: true },
+    columns: {
+      pin: false,
+      passwordHash: false,
+      updatedAt: false,
+    },
+    orderBy: (users, { desc }) => [desc(users.createdAt)],
+  });
+
+  // const result = await db
+  //   .select({
+  //     id: users.id,
+  //     email: users.email,
+  //     username: users.username,
+  //     name: users.name,
+  //     role: users.role,
+  //     isSuperuser: users.isSuperuser,
+  //     isActive: users.isActive,
+  //     pinHash: users.pinHash,
+  //     createdAt: users.createdAt,
+  //   })
+  //   .from(users)
+  //   .orderBy(users.createdAt);
+
   return c.json(result);
 });
 
@@ -331,6 +343,22 @@ auth.post("/users/change-password", async (c) => {
     .run();
 
   return c.json({ success: true });
+});
+
+auth.get("/users/permissions", async (c) => {
+  const db = c.get("db");
+  const idsParam = c.req.query("ids");
+  if (!idsParam) return c.json({});
+  const ids = idsParam.split(",").map((id) => parseInt(id, 10)).filter((n) => !isNaN(n));
+  if (ids.length === 0) return c.json({});
+  const rows = await db
+    .select({ userId: userPermissions.userId, screen: userPermissions.screen })
+    .from(userPermissions)
+    .where(inArray(userPermissions.userId, ids));
+  const map: Record<string, string[]> = {};
+  for (const id of ids) map[id] = [];
+  rows.forEach((r) => { if (map[r.userId]) map[r.userId].push(r.screen); });
+  return c.json(map);
 });
 
 auth.get("/users/permissions/:userId", async (c) => {

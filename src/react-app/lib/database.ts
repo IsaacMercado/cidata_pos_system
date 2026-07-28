@@ -6,6 +6,7 @@ import { replicateRxCollection } from "rxdb/plugins/replication";
 import { getRxStorageDexie } from "rxdb/plugins/storage-dexie";
 import { wrappedValidateAjvStorage } from "rxdb/plugins/validate-ajv";
 import { loadSession } from "./session";
+import { api } from "./api";
 
 addRxPlugin(RxDBLeaderElectionPlugin);
 addRxPlugin(RxDBMigrationSchemaPlugin);
@@ -72,6 +73,14 @@ export interface OperatorDoc {
   pinHash: string;
   updatedAt: string;
   _deleted: boolean;
+}
+
+export interface PendingOpDoc {
+  rxid: string;
+  type: string;
+  payload: any;
+  createdAt: string;
+  retries: number;
 }
 
 const productSchema: RxJsonSchema<ProductDoc> = {
@@ -147,6 +156,21 @@ const restaurantTableSchema: RxJsonSchema<RestaurantTableDoc> = {
   indexes: ["restaurantId"],
 };
 
+const pendingOpSchema: RxJsonSchema<PendingOpDoc> = {
+  title: "pending_op",
+  version: 1,
+  primaryKey: "rxid",
+  type: "object",
+  properties: {
+    rxid: { type: "string", maxLength: 36 },
+    type: { type: "string" },
+    payload: { type: ["object", "null"] },
+    createdAt: { type: "string" },
+    retries: { type: "number" },
+  },
+  required: ["rxid", "type", "payload", "createdAt", "retries"],
+};
+
 const operatorSchema: RxJsonSchema<OperatorDoc> = {
   title: "operator",
   version: 4,
@@ -172,6 +196,7 @@ export type RxCollections = {
   restaurants: RxCollection<RestaurantDoc>;
   restaurant_tables: RxCollection<RestaurantTableDoc>;
   operators: RxCollection<OperatorDoc>;
+  pending_ops: RxCollection<PendingOpDoc>;
 };
 
 let dbPromise: Promise<RxDatabase<RxCollections>> | null = null;
@@ -213,6 +238,10 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
       operators: {
         schema: operatorSchema,
         migrationStrategies: { 1: (d) => d, 2: (d) => d, 3: (d) => d, 4: (d) => d },
+      },
+      pending_ops: {
+        schema: pendingOpSchema,
+        migrationStrategies: { 1: (d) => d },
       },
     });
 
@@ -271,6 +300,39 @@ function startReplication(collection: RxCollection<any>, name: string) {
       },
     },
   });
+}
+
+export async function syncPendingOps() {
+  const db = await getDatabase();
+  const docs = await db.pending_ops.find().exec();
+
+  for (const doc of docs) {
+    try {
+      switch (doc.type) {
+        case "create_sale":
+          await api.sales.create(doc.payload);
+          break;
+        case "pay_sale":
+          await api.sales.pay(doc.payload.saleId, doc.payload);
+          break;
+        case "create_customer":
+          await api.customers.create(doc.payload);
+          break;
+        case "update_product":
+          await api.products.update(doc.payload.id, doc.payload);
+          break;
+      }
+      await doc.remove();
+    } catch (e) {
+      const nextRetries = doc.retries + 1;
+      if (nextRetries >= 5) {
+        console.error("Permanent sync failure, skipping:", doc.type, e);
+        await doc.remove();
+      } else {
+        await (doc as any).update({ retries: nextRetries });
+      }
+    }
+  }
 }
 
 export const getDatabase = (): Promise<RxDatabase<RxCollections>> => {

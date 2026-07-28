@@ -34,7 +34,6 @@ export function CommandPaletteProvider({ children }: { children: ComponentChildr
   const [open, setOpen] = useState(false);
   const [commands, setCommands] = useState<CommandItem[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -42,7 +41,6 @@ export function CommandPaletteProvider({ children }: { children: ComponentChildr
         e.preventDefault();
         setOpen(true);
         setSearch("");
-        setSelectedIndex(0);
       }
       if (e.key === "Escape" && open) {
         setOpen(false);
@@ -70,33 +68,16 @@ export function CommandPaletteProvider({ children }: { children: ComponentChildr
     ).slice(0, 20);
   }, [commands, search]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex((prev) => Math.min(prev + 1, filteredCommands.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex((prev) => Math.max(prev - 1, 0));
-    } else if (e.key === "Enter" && filteredCommands[selectedIndex]) {
-      e.preventDefault();
-      filteredCommands[selectedIndex].action();
-      setOpen(false);
-      setSearch("");
-      setSelectedIndex(0);
-    }
-  };
-
   const executeCommand = (cmd: CommandItem) => {
     cmd.action();
     setOpen(false);
     setSearch("");
-    setSelectedIndex(0);
   };
 
   return (
     <CommandPaletteContext.Provider value={{ open, setOpen, registerCommands }}>
       {children}
-      <Dialog open={open} onClose={() => { setOpen(false); setSearch(""); setSelectedIndex(0); }} size="lg" className="max-w-2xl">
+      <Dialog open={open} onClose={() => { setOpen(false); setSearch(""); }} size="lg" className="max-w-2xl">
         <div className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <Keyboard className="w-5 h-5 text-neutral-400" />
@@ -110,7 +91,7 @@ export function CommandPaletteProvider({ children }: { children: ComponentChildr
             <Input
               placeholder="Escribe un comando o busca..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setSelectedIndex(0); }}
+              onChange={(e) => { setSearch((e.target as HTMLInputElement).value); }}
               onKeyDown={(e) => {
                 if (e.key === "ArrowDown") { e.preventDefault(); }
                 if (e.key === "ArrowUp") { e.preventDefault(); }
@@ -141,8 +122,7 @@ export function CommandPaletteProvider({ children }: { children: ComponentChildr
             {filteredCommands.map((cmd, index) => (
               <button
                 key={cmd.id}
-                onClick={() => { cmd.action(); setOpen(false); setSearch(""); setSelectedIndex(0); }}
-                onMouseEnter={() => setSelectedIndex(index)}
+                onClick={() => executeCommand(cmd)}
                 className={`w-full px-3 py-2.5 rounded-lg text-left transition-colors flex items-center gap-3 ${
                   index === 0
                     ? "bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"

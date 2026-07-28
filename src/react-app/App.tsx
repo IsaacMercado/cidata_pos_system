@@ -1,6 +1,6 @@
 import {
-  QueryClient,
-  QueryClientProvider
+    QueryClient,
+    QueryClientProvider
 } from '@tanstack/react-query';
 import { DollarSign, LayoutDashboard, Package, Receipt, ShoppingCart, Users, UtensilsCrossed, Warehouse } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
@@ -10,10 +10,10 @@ import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { Sidebar } from "./components/pos/Sidebar";
 import { ToastProvider } from "./components/pos/Toast";
-import { CommandPaletteProvider, CommandRegistration, Loading } from "./components/ui";
+import { CommandPaletteProvider, CommandRegistration, ErrorBoundary, Loading } from "./components/ui";
 
 import { api } from "./lib/api";
-import { syncPendingOps } from "./lib/db";
+import { syncPendingOps } from "./lib/database";
 import { clearSession, loadSession, saveSession } from "./lib/session";
 import { useOnlineStatus } from "./lib/useOnlineStatus";
 
@@ -159,13 +159,13 @@ export function App() {
       return;
     }
 
-    api.auth
+      api.auth
       .me()
-      .then((u: any) => {
+      .then(async (u: any) => {
         if (u) {
           const normalized = normalizeUser(u);
           setUser(normalized);
-          loadPermissions(normalized);
+          setPermissions(await loadPermissions(normalized));
         }
       })
       .catch(() => {})
@@ -230,6 +230,7 @@ export function App() {
       <CommandPaletteProvider>
         <CommandRegistration commands={globalCommands} />
         <ToastProvider>
+          <ErrorBoundary>
           <div className="flex min-h-dvh flex-col md:flex-row">
             <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary-600 focus:text-white focus:rounded-lg focus:shadow-lg">
               Saltar al contenido principal
@@ -280,6 +281,7 @@ export function App() {
               onClose={() => setPasswordModalOpen(false)}
             />
           </div>
+          </ErrorBoundary>
         </ToastProvider>
       </CommandPaletteProvider>
     </QueryClientProvider>

@@ -12,3 +12,4 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { DataTable } from "./DataTable";
 export { CommandPaletteProvider, CommandRegistration, useCommandPalette } from "./CommandPalette";
 export { FormField, FormFieldLabel, FormFieldError, FormFieldHint } from "./FormField";
+export { ErrorBoundary } from "./ErrorBoundary";

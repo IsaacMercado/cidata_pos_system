@@ -1,5 +1,5 @@
 import { useState, useEffect } from "preact/hooks";
-import { useLocation, useRoute } from "wouter-preact";
+import { useLocation } from "wouter-preact";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -39,7 +39,7 @@ interface SidebarProps {
 
 export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: SidebarProps) {
   const [open, setOpen] = useState(false);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("sidebar:collapsed") === "1";
@@ -127,7 +127,7 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
 
         <nav className="flex-1 py-3 space-y-0.5 px-2">
           {links.map((link) => {
-            const [isActive] = useRoute(link.href === "/" ? "/" : link.href === "/pos" ? "/pos" : link.href);
+            const isActive = location === link.href || (link.href === "/" && location === "/") || (link.href !== "/" && location.startsWith(link.href));
             return (
               <a
                 key={link.href}
@@ -162,7 +162,7 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
                 navigate("/admin");
               }}
               className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors ${
-                location.pathname === "/admin"
+                location === "/admin"
                   ? "bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 font-medium"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
               } ${collapsed ? "justify-center" : ""}`}

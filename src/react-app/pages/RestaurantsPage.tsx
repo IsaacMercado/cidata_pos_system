@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
-import { SubmitHandler, useForm } from "react-hook-form";
+import { useEffect, useState } from "preact/hooks";
 import type { RxDatabase } from "rxdb";
 import { RxDatabaseProvider, useRxCollection } from 'rxdb/plugins/react';
 import { useLocation, useRoute } from "wouter-preact";
@@ -13,16 +12,7 @@ import { api } from "../lib/api";
 import { getDatabase, type ProductDoc, type RestaurantDoc, type RestaurantTableDoc, type RxCollections } from '../lib/database';
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
-type TableShape = "circle" | "rectangle";
-type TableForm = { name: string; capacity: number; shape: TableShape };
 type DraftMap = Record<number, any[]>;
-
-const colorByStatus: Record<string, string> = {
-  available: "bg-emerald-500",
-  occupied: "bg-rose-500",
-  reserved: "bg-amber-500",
-  maintenance: "bg-slate-400",
-};
 
 const labelByStatus: Record<string, string> = {
   available: "Libre",
@@ -54,10 +44,10 @@ function RestaurantsPageContent() {
   const [, navigate] = useLocation();
   const online = useOnlineStatus();
   const view = params?.view === "layout" ? "layout" : "order";
+  const { toast } = useToast();
 
   const [restaurant, setRestaurant] = useState<any | null>(null);
-  const [showTableForm, setShowTableForm] = useState(false);
-  const tableForm = useForm<TableForm>({ defaultValues: { name: "", capacity: 2, shape: "circle" } });
+
   const [products, setProducts] = useState<any[]>([]);
   const [productQuery, setProductQuery] = useState("");
   const [planExpanded, setPlanExpanded] = useState(false);
@@ -69,9 +59,6 @@ function RestaurantsPageContent() {
   const [payments, setPayments] = useState<{ methodId: number; amount: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
-  const { toast } = useToast();
-  const [dragging, setDragging] = useState<number | null>(null);
-  const dragRef = useRef({ startX: 0, startY: 0, tableId: 0 });
 
   const restaurantCollection = useRxCollection<RestaurantDoc>("restaurants");
   const restaurantTableCollection = useRxCollection<RestaurantTableDoc>("restaurant_tables");
@@ -105,21 +92,12 @@ function RestaurantsPageContent() {
     if (!productsCollection) { setProducts([]); return; }
     const rows = await productsCollection.find({ selector: { isActive: 1 } }).exec();
     setProducts(rows.map((r) => r.toJSON()));
-  }
+}
 
-  const onSaveTable: SubmitHandler<TableForm> = async (data) => {
-    if (!restaurant) return;
-    await api.restaurants.addTable(restaurant.id, data);
-    setShowTableForm(false);
-    tableForm.reset({ name: "", capacity: 2, shape: "circle" });
-    await loadRestaurant();
-  };
-
-  async function removeTable(tableId: number) {
-    if (!restaurant || !confirm("¿Eliminar esta mesa?")) return;
-    await api.restaurants.removeTable(restaurant.id, tableId);
-    await loadRestaurant();
-  }
+function removeTable(tableId: number) {
+  if (!restaurant || !confirm("¿Eliminar esta mesa?")) return;
+  api.restaurants.removeTable(restaurant.id, tableId).then(() => loadRestaurant());
+}
 
   function setDraftForTable(tableId: number, updater: (items: any[]) => any[]) {
     setDraftsByTable((prev) => ({ ...prev, [tableId]: updater(prev[tableId] || []) }));
@@ -174,30 +152,6 @@ function RestaurantsPageContent() {
     const total = activeTotal > 0 ? activeTotal : backendOpenTotal > 0 ? backendOpenTotal : draftTotal;
     const itemsCount = draftItemsForTable.length;
     return { total, itemsCount, hasOpenOrder: Boolean(table.openSaleId), receiptNumber: table.openReceiptNumber as string | null };
-  }
-
-  function renderPlanButton(table: any, expanded = false) {
-    const isSelected = table.id === selectedTableId;
-    const summary = getTableSummary(table);
-    const width = expanded ? Math.max(table.width + 18, 86) : table.width;
-    const height = table.shape === "circle" ? width : (expanded ? Math.max(table.height + 12, 72) : table.height);
-
-    return (
-      <button
-        key={table.id}
-        className={`absolute flex cursor-grab flex-col items-center justify-center text-white shadow-lg transition ${table.shape === "circle" ? "rounded-full" : "rounded-2xl"} ${colorByStatus[table.status] || "bg-emerald-500"} ${isSelected ? "ring-4 ring-violet-200" : "hover:ring-2 hover:ring-violet-300"} ${dragging === table.id ? "scale-105 opacity-80" : ""}`}
-        style={{ left: table.posX, top: table.posY, width, height }}
-        onClick={() => void selectTable(table)}
-        onMouseDown={(e) => onDragStart(e, table)}
-      >
-        <div className="pointer-events-none text-center leading-tight">
-          <div className={`${expanded ? "text-xs" : "text-xs"} font-bold`}>{table.name}</div>
-          <div className={`${expanded ? "text-xs" : "text-xs"} opacity-80`}>{table.capacity} pax</div>
-          {summary.total > 0 && <div className={`${expanded ? "text-xs" : "text-xs"} font-semibold opacity-95`}>${summary.total.toFixed(2)}</div>}
-          {summary.itemsCount > 0 && <div className="text-xs opacity-90">+{summary.itemsCount} nuevos</div>}
-        </div>
-      </button>
-    );
   }
 
   function addToDraft(product: any) {
@@ -294,32 +248,6 @@ function RestaurantsPageContent() {
     setSubmitting(false);
   }
 
-  function onDragStart(e: React.MouseEvent<HTMLDivElement>, table: any) {
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX - table.posX, startY: e.clientY - table.posY, tableId: table.id };
-    setDragging(table.id);
-
-    const onMove = (ev: MouseEvent) => {
-      if (!restaurant) return;
-      const posX = Math.max(0, ev.clientX - dragRef.current.startX);
-      const posY = Math.max(0, ev.clientY - dragRef.current.startY);
-      setRestaurant({ ...restaurant, tables: (restaurant.tables || []).map((item: any) => item.id === dragRef.current.tableId ? { ...item, posX, posY } : item) });
-    };
-
-    const onUp = async (ev: MouseEvent) => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setDragging(null);
-      if (!restaurant) return;
-      const posX = Math.max(0, ev.clientX - dragRef.current.startX);
-      const posY = Math.max(0, ev.clientY - dragRef.current.startY);
-      await api.restaurants.updateTable(restaurant.id, dragRef.current.tableId, { posX, posY });
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }
-
   const filteredProducts = productQuery
     ? products.filter((product: any) => product.name?.toLowerCase().includes(productQuery.toLowerCase()) || product.code?.toLowerCase().includes(productQuery.toLowerCase()))
     : products;
@@ -331,7 +259,7 @@ function RestaurantsPageContent() {
       <TableMap
         restaurant={restaurant}
         onClose={() => navigate("/restaurants")}
-        onAddTable={() => { tableForm.reset({ name: `Mesa ${(restaurant.tables || []).length + 1}`, capacity: 2, shape: "circle" }); setShowTableForm(true); }}
+        onAddTable={() => {}}
         onRemoveTable={removeTable}
         onUpdateTablePosition={async (tableId, posX, posY) => { await api.restaurants.updateTable(restaurant.id, tableId, { posX, posY }); await loadRestaurant(); }}
         onSelectTable={selectTable}

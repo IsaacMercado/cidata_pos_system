@@ -1,10 +1,7 @@
-import type { ComponentChildren } from "preact";
-
-export function Skeleton({ className = "", ...props }: { className?: string } & JSX.HTMLAttributes<HTMLDivElement>) {
+export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       className={`animate-pulse bg-neutral-200 dark:bg-neutral-700 rounded ${className}`}
-      {...props}
     />
   );
 }

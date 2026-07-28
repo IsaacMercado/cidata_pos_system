@@ -22,18 +22,18 @@ export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
 
         // Handle special keys
         const specialKeys: Record<string, string> = {
-          "escape": "escape",
-          "esc": "escape",
-          "delete": "delete",
-          "backspace": "backspace",
-          "enter": "enter",
-          "tab": "tab",
+          escape: "escape",
+          esc: "escape",
+          delete: "delete",
+          backspace: "backspace",
+          enter: "enter",
+          tab: "tab",
           " ": "space",
-          "space": "space",
-          "arrowup": "arrowup",
-          "arrowdown": "arrowdown",
-          "arrowleft": "arrowleft",
-          "arrowright": "arrowright",
+          space: "space",
+          arrowup: "arrowup",
+          arrowdown: "arrowdown",
+          arrowleft: "arrowleft",
+          arrowright: "arrowright",
         };
 
         const normalizedKey = specialKeys[key] || key;

@@ -87,6 +87,17 @@ export const userPermissions = sqliteTable("user_permissions", {
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
+export const usersRelations = relations(users, ({ many }) => ({
+  userPermissions: many(userPermissions),
+}));
+
+export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
+  user: one(users, {
+    fields: [userPermissions.userId],
+    references: [users.id],
+  }),
+}));
+
 // ─── Payment Methods ─────────────────────────────────────────────────────────
 export const paymentMethods = sqliteTable("payment_methods", {
   id: integer("id").primaryKey({ autoIncrement: true }),

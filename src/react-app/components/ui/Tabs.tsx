@@ -1,5 +1,6 @@
-import type { ComponentChildren, JSX } from "preact";
+import { JSX } from "preact/compat";
 import { useState } from "preact/hooks";
+import type { ComponentChildren } from "preact";
 
 interface TabsProps {
   children: ComponentChildren;
@@ -43,7 +44,6 @@ export function Tabs({
   value,
   onChange,
   className = "",
-  variant = "line",
 }: TabsProps) {
   const [internalValue, setInternalValue] = useState(defaultValue || "");
   const controlled = value !== undefined;
@@ -85,7 +85,7 @@ export function TabsTrigger({
   onClick,
   ...props
 }: TabsTriggerProps) {
-  const context = (props as any).__tabsContext;
+  const context = (props as unknown as { __tabsContext?: { value: string; onChange: (v: string) => void; variant: string } }).__tabsContext;
   const currentValue = context?.value;
   const onChange = context?.onChange;
   const variant = context?.variant || "line";
@@ -95,7 +95,7 @@ export function TabsTrigger({
   const handleClick = () => {
     if (!disabled) {
       onChange?.(value);
-      onClick?.(new MouseEvent("click"));
+      onClick?.(new MouseEvent("click", { bubbles: true }) as any);
     }
   };
 
@@ -111,7 +111,7 @@ export function TabsTrigger({
         isActive
           ? "text-primary-600 dark:text-primary-400"
           : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-      } ${triggerVariants[variant]} ${disabled ? "opacity-50 pointer-events-none" : ""} ${className}`}
+      } ${triggerVariants[variant as keyof typeof triggerVariants]} ${disabled ? "opacity-50 pointer-events-none" : ""} ${className}`}
       {...props}
     >
       {children}
@@ -122,7 +122,7 @@ export function TabsTrigger({
 TabsTrigger.displayName = "TabsTrigger";
 
 export function TabsContent({ value, children, className = "", ...props }: TabsContentProps) {
-  const context = (props as any).__tabsContext;
+  const context = (props as unknown as { __tabsContext?: { value: string } }).__tabsContext;
   const currentValue = context?.value;
 
   if (currentValue !== value) return null;

@@ -1,10 +1,5 @@
-import { useState } from "preact/hooks";
-import { SubmitHandler, useForm } from "react-hook-form";
-import { useToast } from "../pos/Toast";
-import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter, Input, Select, Badge } from "../../components/ui";
-import { api } from "../../lib/api";
-import { useOnlineStatus } from "../../lib/useOnlineStatus";
-import { Plus, Minus, Trash2, X } from "lucide-react";
+import { Button, Card, CardHeader, CardTitle, CardContent } from "../../components/ui";
+import { X } from "lucide-react";
 
 interface TableOrderPanelProps {
   currentTable: any | null;
@@ -27,7 +22,6 @@ interface TableOrderPanelProps {
 
 export function TableOrderPanel({
   currentTable,
-  restaurant,
   activeOrder,
   draftItems,
   savedItems,
@@ -43,11 +37,8 @@ export function TableOrderPanel({
   productQuery,
   setProductQuery,
 }: TableOrderPanelProps) {
-  const { toast } = useToast();
-  const online = useOnlineStatus();
   const allOrderItems = [...savedItems, ...draftItems];
   const orderTotal = allOrderItems.reduce((sum, item) => sum + item.total, 0);
-  const payableTotal = activeOrder?.total ?? orderTotal;
   const currentDraftCount = draftItems.length;
 
   if (!currentTable) {
@@ -90,30 +81,22 @@ export function TableOrderPanel({
         />
       </div>
 
-      {!currentTable && (
-        <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
-          Selecciona una mesa para empezar a cargar la cuenta.
+      <CardContent className="pb-0">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-3">
+          {filteredProducts.map((product: any) => (
+            <button
+              key={product.id}
+              className="rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-violet-300 hover:shadow-sm disabled:opacity-40"
+              onClick={() => onAddToDraft(product)}
+              disabled={product.currentStock <= 0 || loadingTable}
+            >
+              <div className="mb-2 truncate text-sm font-semibold">{product.name}</div>
+              <div className="text-lg font-bold text-violet-700">${product.price.toFixed(2)}</div>
+              <div className="mt-2 text-[0.7rem] text-slate-400">Stock {product.currentStock} {product.unit}</div>
+            </button>
+          ))}
         </div>
-      )}
-
-      {currentTable && (
-        <CardContent className="pb-0">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-3">
-            {filteredProducts.map((product: any) => (
-              <button
-                key={product.id}
-                className="rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-violet-300 hover:shadow-sm disabled:opacity-40"
-                onClick={() => onAddToDraft(product)}
-                disabled={product.currentStock <= 0 || loadingTable}
-              >
-                <div className="mb-2 truncate text-sm font-semibold">{product.name}</div>
-                <div className="text-lg font-bold text-violet-700">${product.price.toFixed(2)}</div>
-                <div className="mt-2 text-[0.7rem] text-slate-400">Stock {product.currentStock} {product.unit}</div>
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      )}
+      </CardContent>
 
       <CardContent className="pt-0">
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -150,7 +133,7 @@ export function TableOrderPanel({
                 onInput={(e: any) => onUpdateDraftQty(index, parseFloat(e.target.value) || 0.5)}
               />
               <div className="font-semibold">${item.total.toFixed(2)}</div>
-              <button className="text-red-500 hover:text-red-600" onClick={() => onRemoveDraftItem(index)}>✕</button>
+              <button className="text-red-500 hover:text-red-600" onClick={() => onRemoveDraftItem(index)} aria-label="Quitar"><X size={14} /></button>
             </div>
           ))}
         </div>
@@ -166,7 +149,7 @@ export function TableOrderPanel({
           <div className="space-y-2">
             <Button
               onClick={onSaveOrder}
-              disabled={!currentTable || draftItems.length === 0 || submitting}
+              disabled={draftItems.length === 0 || submitting}
               className="w-full rounded-2xl bg-gradient-to-r from-violet-600 to-cyan-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
               {submitting ? "Guardando..." : activeOrder ? "Agregar a la mesa" : "Enviar a la mesa"}

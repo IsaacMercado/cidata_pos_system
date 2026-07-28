@@ -1,9 +1,7 @@
 import {
     Coffee,
     Milk,
-    Minus,
     Package,
-    Plus,
     Popcorn,
     Sandwich,
     Search,
@@ -11,15 +9,16 @@ import {
     Sparkles,
     X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { RxDatabase } from "rxdb";
 import { RxDatabaseProvider, useLiveRxQuery } from 'rxdb/plugins/react';
+import { CartAside } from "../components/pos/CartAside";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
 import { Button, Dialog, Loading } from "../components/ui";
 import { api } from "../lib/api";
 import { getDatabase, type ProductDoc, type RxCollections } from "../lib/database";
-import { addPendingOp } from "../lib/db";
+import { PAYMENT_METHODS } from "../lib/paymentMethods";
 import type { CartItem, ProductWithCategory, SaleWithItems } from "../lib/types";
 import { useKeyboardShortcuts, type ShortcutConfig } from "../lib/useKeyboardShortcuts";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
@@ -31,13 +30,6 @@ interface Order {
   items: CartItem[];
   createdAt: Date;
 }
-
-const pays = [
-  { id: 1, code: "cash", name: "Efectivo" },
-  { id: 2, code: "card", name: "Tarjeta" },
-  { id: 3, code: "transfer", name: "Transferencia" },
-  { id: 4, code: "mobile", name: "Pago Móvil" },
-];
 
 const CURRENCIES = [
   { code: "USD", label: "$ USD", symbol: "$" },
@@ -58,11 +50,11 @@ function CategoryIcon({ name }: { name: string }) {
   return <Icon size={20} className="text-indigo-500" />;
 }
 
-let orderIdCounter = 0;
-
-function createOrder(name?: string): Order {
-  orderIdCounter += 1;
-  return { id: orderIdCounter, name: name || `Orden ${orderIdCounter}`, items: [], createdAt: new Date() };
+interface Order {
+  id: number;
+  name: string;
+  items: CartItem[];
+  createdAt: Date;
 }
 
 export function PosPage() {
@@ -84,10 +76,17 @@ export function PosPage() {
 }
 
 function PosPageContent() {
-  const [products, setProducts] = useState<ProductWithCategory[]>([]);
+  const orderIdCounter = useRef(0);
+
+  function createOrder(name?: string): Order {
+    orderIdCounter.current += 1;
+    return { id: orderIdCounter.current, name: name || `Orden ${orderIdCounter.current}`, items: [], createdAt: new Date() };
+  }
+
   const [orders, setOrders] = useState<Order[]>([createOrder("Orden 1")]);
   const [activeOrderId, setActiveOrderId] = useState<number>(1);
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -102,16 +101,16 @@ function PosPageContent() {
   const productLiveQuery = useMemo(() => ({
       collection: 'products',
       query: {
-          selector: { isActive: 1 },
-          sort: [{ name: 'asc' }],
+        selector: { isActive: 1 },
+        sort: [{ name: 'asc' as const }],
       }
   }), []);
   const { results, loading: productsLoading } = useLiveRxQuery<ProductDoc>(productLiveQuery);
 
   const rate = exchangeRate || 1;
 
-  useEffect(() => {
-    const mapped = results
+  const products = useMemo(() => {
+    return results
       .map((p) => {
         const d = p.toJSON() as ProductDoc;
         return {
@@ -120,11 +119,13 @@ function PosPageContent() {
         };
       })
       .filter((p) => p.isActive) as unknown as ProductWithCategory[];
-    setProducts(mapped);
+  }, [results]);
+
+  useEffect(() => {
     if (results.length > 0 && !navigator.onLine) {
       toast("Modo offline — catálogo sincronizado", "success");
     }
-  }, [results, toast]);
+  }, [results.length, toast]);
 
   useEffect(() => {
     api.exchange.get().then((r) => {
@@ -213,7 +214,7 @@ function PosPageContent() {
 
   function addPaymentSplit() {
     const remaining = totalDisplay - payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-    if (remaining > 0.01) setPayments((prev) => [...prev, { methodId: 2, amount: remaining.toFixed(2) }]);
+    if (remaining > 0.01) setPayments((prev) => [...prev, { methodId: 1, amount: remaining.toFixed(2) }]);
   }
 
   function updatePayment(index: number, field: "methodId" | "amount", value: string | number) {
@@ -249,13 +250,17 @@ function PosPageContent() {
 
     if (!online) {
       try {
-        await addPendingOp({
+        const db = await getDatabase();
+        await db.pending_ops.insert({
+          rxid: crypto.randomUUID(),
           type: "create_sale",
           payload: {
             status: "in_progress",
             items,
             payments: paymentData.payments,
           },
+          createdAt: new Date().toISOString(),
+          retries: 0,
         });
         setPayDialog(false);
         toast("Venta guardada sin conexión — se sincronizará automáticamente", "success");
@@ -309,7 +314,7 @@ function PosPageContent() {
   const shortcuts: ShortcutConfig[] = useMemo(() => [
     { key: "F1", action: () => openPayDialog(), description: "Cobrar (F1)" },
     { key: "F2", action: () => addOrder(), description: "Nueva orden (F2)" },
-    { key: "F3", action: () => { const input = document.querySelector('input[placeholder="Buscar producto..."]') as HTMLInputElement; input?.focus(); }, description: "Buscar producto (F3)" },
+    { key: "F3", action: () => { searchInputRef.current?.focus(); }, description: "Buscar producto (F3)" },
     { key: "F4", action: () => { setCurrency(currency === "USD" ? "VES" : "USD"); }, description: "Cambiar moneda (F4)" },
     { key: "Escape", action: () => { setPayDialog(false); setCartOpen(false); }, description: "Cerrar modales (Esc)" },
     { key: "Delete", action: () => { if (activeOrder.items.length > 0 && !payDialog && !cartOpen) removeOrder(activeOrderId); }, description: "Eliminar orden actual (Supr)" },
@@ -335,6 +340,7 @@ function PosPageContent() {
               <div className="relative flex-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"><Search size={16} /></span>
                 <input
+                  ref={searchInputRef}
                   type="text"
                   placeholder="Buscar producto..."
                   value={search}
@@ -396,139 +402,47 @@ function PosPageContent() {
           </div>
         </main>
 
-        <aside className="hidden lg:flex lg:flex-col lg:w-96 lg:border-l lg:border-zinc-200 dark:lg:border-zinc-800 lg:bg-zinc-50 dark:lg:bg-zinc-900 lg:shadow-2xl">
-          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-              <ShoppingCart size={16} /> {activeOrder.name}
-              {itemCount > 0 && (
-                <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{itemCount}</span>
-              )}
-            </h2>
-            <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"><X size={18} /></button>
-          </div>
+        <CartAside
+          mobile={false}
+          cartOpen={cartOpen}
+          setCartOpen={setCartOpen}
+          orders={orders}
+          activeOrderId={activeOrderId}
+          itemCount={itemCount}
+          totalDisplay={totalDisplay}
+          symbol={symbol}
+          currency={currency}
+          rate={rate}
+          submitting={submitting}
+          hasMultipleOrders={orders.length > 1}
+          activeOrderEmpty={activeOrder.items.length === 0}
+          onSwitchOrder={switchOrder}
+          onAddOrder={addOrder}
+          onRemoveOrder={removeOrder}
+          onOpenPay={openPayDialog}
+          onUpdateQuantity={updateQuantity}
+        />
 
-          <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2 overflow-auto">
-            {orders.map((order) => (
-              <button
-                key={order.id}
-                onClick={() => switchOrder(order.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
-                  order.id === activeOrderId
-                    ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                }`}
-              >
-                {order.name}
-                {order.items.length > 0 && <span className="text-[10px] opacity-60">({order.items.length})</span>}
-              </button>
-            ))}
-            <Button onClick={addOrder} variant="light" size="sm"><Plus size={14} /> Nueva</Button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
-            {activeOrder.items.map((item) => (
-              <div key={item.product.id} className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{item.product.name}</p>
-                  <p className="text-xs text-zinc-400">{symbol}{(currency === "VES" ? item.product.price * rate : item.product.price).toFixed(2)} c/u</p>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="w-8 h-8" size="sm" variant="ghost"><Minus size={14} /></Button>
-                  <span className="w-8 text-center text-sm font-semibold text-zinc-800 dark:text-zinc-100">{item.quantity}</span>
-                  <Button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8" size="sm" variant="ghost"><Plus size={14} /></Button>
-                </div>
-              </div>
-            ))}
-            {activeOrder.items.length === 0 && (
-              <div className="text-center py-12">
-                <ShoppingCart size={40} className="mx-auto mb-2 text-zinc-300 dark:text-zinc-600" />
-                <p className="text-zinc-400 dark:text-zinc-500 text-sm">Carrito vacío</p>
-                <p className="text-zinc-300 dark:text-zinc-600 text-xs">Selecciona productos para empezar</p>
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400">
-                <span>Total ({currency})</span>
-                <span className="font-semibold text-zinc-800 dark:text-zinc-100">{symbol}{totalDisplay.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {orders.length > 1 && activeOrder.items.length === 0 && (
-                <Button onClick={() => removeOrder(activeOrder.id)} variant="light" className="flex-1">Descartar</Button>
-              )}
-              <Button onClick={openPayDialog} disabled={activeOrder.items.length === 0 || submitting} variant="primary" className="flex-1 py-3 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">Cobrar</Button>
-            </div>
-          </div>
-        </aside>
-
-        {cartOpen && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setCartOpen(false)} />}
-        <div className={`fixed lg:hidden inset-y-0 right-0 z-40 w-full sm:w-96 bg-zinc-50 dark:bg-zinc-900 flex flex-col shadow-2xl border-l dark:border-zinc-800 transition-transform duration-300 ${cartOpen ? "translate-x-0" : "translate-x-full"}`}>
-          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-              <ShoppingCart size={16} /> {activeOrder.name}
-              {itemCount > 0 && <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{itemCount}</span>}
-            </h2>
-            <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"><X size={18} /></button>
-          </div>
-          <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2 overflow-auto">
-            {orders.map((order) => (
-              <button
-                key={order.id}
-                onClick={() => switchOrder(order.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
-                  order.id === activeOrderId
-                    ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                }`}
-              >
-                {order.name}
-                {order.items.length > 0 && <span className="text-[10px] opacity-60">({order.items.length})</span>}
-              </button>
-            ))}
-            <Button onClick={addOrder} variant="light" size="sm"><Plus size={14} /> Nueva</Button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
-            {activeOrder.items.map((item) => (
-              <div key={item.product.id} className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{item.product.name}</p>
-                  <p className="text-xs text-zinc-400">{symbol}{(currency === "VES" ? item.product.price * rate : item.product.price).toFixed(2)} c/u</p>
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="w-8 h-8" size="sm" variant="ghost"><Minus size={14} /></Button>
-                  <span className="w-8 text-center text-sm font-semibold text-zinc-800 dark:text-zinc-100">{item.quantity}</span>
-                  <Button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8" size="sm" variant="ghost"><Plus size={14} /></Button>
-                </div>
-              </div>
-            ))}
-            {activeOrder.items.length === 0 && (
-              <div className="text-center py-12">
-                <ShoppingCart size={40} className="mx-auto mb-2 text-zinc-300 dark:text-zinc-600" />
-                <p className="text-zinc-400 dark:text-zinc-500 text-sm">Carrito vacío</p>
-                <p className="text-zinc-300 dark:text-zinc-600 text-xs">Selecciona productos para empezar</p>
-              </div>
-            )}
-          </div>
-          <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
-            <div className="space-y-1 text-sm">
-              <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400">
-                <span>Total ({currency})</span>
-                <span className="font-semibold text-zinc-800 dark:text-zinc-100">{symbol}{totalDisplay.toFixed(2)}</span>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              {orders.length > 1 && activeOrder.items.length === 0 && (
-                <Button onClick={() => removeOrder(activeOrder.id)} variant="light" className="flex-1">Descartar</Button>
-              )}
-              <Button onClick={openPayDialog} disabled={activeOrder.items.length === 0 || submitting} variant="primary" className="flex-1 py-3 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">Cobrar</Button>
-            </div>
-          </div>
-        </div>
+        <CartAside
+          mobile={true}
+          cartOpen={cartOpen}
+          setCartOpen={setCartOpen}
+          orders={orders}
+          activeOrderId={activeOrderId}
+          itemCount={itemCount}
+          totalDisplay={totalDisplay}
+          symbol={symbol}
+          currency={currency}
+          rate={rate}
+          submitting={submitting}
+          hasMultipleOrders={orders.length > 1}
+          activeOrderEmpty={activeOrder.items.length === 0}
+          onSwitchOrder={switchOrder}
+          onAddOrder={addOrder}
+          onRemoveOrder={removeOrder}
+          onOpenPay={openPayDialog}
+          onUpdateQuantity={updateQuantity}
+        />
       </div>
 
       <Dialog open={payDialog} onClose={() => setPayDialog(false)}>
@@ -554,7 +468,7 @@ function PosPageContent() {
           {payments.map((payment, index) => (
             <div key={index} className="grid grid-cols-[1fr_120px_auto] items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-3">
               <select className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white" value={payment.methodId} onChange={(e: any) => updatePayment(index, "methodId", parseInt(e.target.value))}>
-                {pays.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
               <input className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-right text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
               <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>

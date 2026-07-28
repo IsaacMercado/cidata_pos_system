@@ -1,6 +1,6 @@
 import { Edit, Shield, ShieldOff, Trash2, UserCheck, UserPlus } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
-import { Badge, Button, Card, CardFooter, CardTitle, Dialog, Input, PageHeader, Select, SkeletonTable, Table } from "../components/ui";
+import { Badge, Button, Card, CardDescription, CardFooter, CardTitle, Dialog, Input, PageHeader, Select, SkeletonTable, Table } from "../components/ui";
 import { api } from "../lib/api";
 
 const ALL_SCREENS = [
@@ -26,7 +26,6 @@ interface User {
 
 export function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
-  const [permissionsMap, setPermissionsMap] = useState<Record<number, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -37,13 +36,6 @@ export function AdminPage() {
     try {
       const usersList = await api.auth.list();
       setUsers(usersList);
-      const permPromises = usersList.map((u: User) =>
-        api.auth.getPermissions(u.id).then((screens) => ({ id: u.id, screens }))
-      );
-      const perms = await Promise.all(permPromises);
-      const permMap: Record<number, string[]> = {};
-      perms.forEach((p) => { permMap[p.id] = p.screens; });
-      setPermissionsMap(permMap);
     } catch {}
     setLoading(false);
   };
@@ -146,8 +138,8 @@ export function AdminPage() {
                   </button>
                 </Table.Cell>
                 <Table.Cell className="text-center">
-                  <Button size="sm" variant="ghost" onClick={() => { setEditPermsUser(u); setEditPermsUser(u); }}>
-                    {(permissionsMap[u.id]?.length || 0)} pantallas
+                  <Button size="sm" variant="ghost" onClick={() => setEditPermsUser(u)} aria-label={`Permisos de ${u.username}`}>
+                    {u.userPermissions.length} pantallas
                   </Button>
                 </Table.Cell>
                 <Table.Cell className="text-right">
@@ -220,14 +212,14 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">✕</Button>
         </div>
 
-        <Input label="Username" value={form.username} onInput={(e) => setForm({ ...form, username: e.target.value })} required />
-        <Input label="Nombre completo" value={form.name} onInput={(e) => setForm({ ...form, name: e.target.value })} required />
-        <Input label="Email" type="email" value={form.email} onInput={(e) => setForm({ ...form, email: e.target.value })} required />
-        <Input label="Contraseña" type="password" value={form.password} onInput={(e) => setForm({ ...form, password: e.target.value })} required />
+        <Input label="Username" value={form.username} onInput={(e: any) => setForm({ ...form, username: e.target.value })} required />
+        <Input label="Nombre completo" value={form.name} onInput={(e: any) => setForm({ ...form, name: e.target.value })} required />
+        <Input label="Email" type="email" value={form.email} onInput={(e: any) => setForm({ ...form, email: e.target.value })} required />
+        <Input label="Contraseña" type="password" value={form.password} onInput={(e: any) => setForm({ ...form, password: e.target.value })} required />
         <Select
           label="Rol"
           value={form.role}
-          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          onChange={(e: any) => setForm({ ...form, role: e.target.value })}
           options={[
             { value: "cashier", label: "Cajero" },
             { value: "admin", label: "Admin" },
@@ -272,12 +264,12 @@ function EditUserModal({ user, onClose, onUpdated }: { user: User; onClose: () =
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">✕</Button>
         </div>
 
-        <Input label="Nombre completo" value={form.name} onInput={(e) => setForm({ ...form, name: e.target.value })} required />
-        <Input label="Email" type="email" value={form.email} onInput={(e) => setForm({ ...form, email: e.target.value })} required />
+        <Input label="Nombre completo" value={form.name} onInput={(e: any) => setForm({ ...form, name: e.target.value })} required />
+        <Input label="Email" type="email" value={form.email} onInput={(e: any) => setForm({ ...form, email: e.target.value })} required />
         <Select
           label="Rol"
           value={form.role}
-          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          onChange={(e: any) => setForm({ ...form, role: e.target.value })}
           options={[
             { value: "cashier", label: "Cajero" },
             { value: "admin", label: "Admin" },

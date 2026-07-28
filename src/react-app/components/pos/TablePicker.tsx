@@ -1,6 +1,5 @@
 import { useState } from "preact/hooks";
 import { Button, Card } from "../../components/ui";
-import { GripVertical } from "lucide-react";
 
 const colorByStatus: Record<string, string> = {
   available: "bg-emerald-500",
@@ -27,6 +26,7 @@ interface TablePickerProps {
 export function TablePicker({ tables, selectedTableId, draftsByTable, onSelectTable, getTableSummary }: TablePickerProps) {
   const [view, setView] = useState<"list" | "plan">("list");
   const [planExpanded, setPlanExpanded] = useState(false);
+  void planExpanded; void setPlanExpanded;
 
 function renderPlanButton(table: any, expanded = false) {
     const isSelected = table.id === selectedTableId;
@@ -63,7 +63,7 @@ function renderPlanButton(table: any, expanded = false) {
 
       <div className="mb-3 grid grid-cols-2 rounded-2xl bg-slate-100 p-1 text-xs font-medium">
         <Button
-          variant={view === "list" ? "default" : "ghost"}
+          variant={view === "list" ? "primary" : "ghost"}
           size="sm"
           className="rounded-xl px-3 py-2 transition"
           onClick={() => setView("list")}
@@ -71,7 +71,7 @@ function renderPlanButton(table: any, expanded = false) {
           Lista
         </Button>
         <Button
-          variant={view === "plan" ? "default" : "ghost"}
+          variant={view === "plan" ? "primary" : "ghost"}
           size="sm"
           className="rounded-xl px-3 py-2 transition"
           onClick={() => setView("plan")}

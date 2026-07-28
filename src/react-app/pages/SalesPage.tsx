@@ -1,39 +1,38 @@
-import { Banknote, Building, CreditCard, Receipt, Smartphone } from "lucide-react";
-import { useEffect, useState } from "preact/hooks";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Receipt } from "lucide-react";
+import { useState } from "preact/hooks";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
 import { Badge, Button, Card, CardTitle, Dialog, Loading, PageHeader, Table } from "../components/ui";
 import { api } from "../lib/api";
+import { METHOD_ICON, METHOD_LABEL } from "../lib/paymentMethods";
 import type { SaleWithItems } from "../lib/types";
 
-const METHOD_ICON: Record<number, typeof Banknote> = {
-  1: Banknote,
-  2: CreditCard,
-  3: Building,
-  4: Smartphone,
-};
-const METHOD_LABEL: Record<number, string> = {
-  1: "Efectivo",
-  2: "Tarjeta",
-  3: "Transferencia",
-  4: "Pago Móvil",
-};
-
 export function SalesPage() {
-  const [sales, setSales] = useState<SaleWithItems[]>([]);
-  const [loading, setLoading] = useState(true);
   const [receiptSale, setReceiptSale] = useState<SaleWithItems | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
   const [detail, setDetail] = useState<SaleWithItems | null>(null);
   const { toast } = useToast();
 
-  async function load() {
-    const data = await api.sales.list();
-    setSales(data || []);
-    setLoading(false);
-  }
+  const queryClient = useQueryClient();
 
-  useEffect(() => { load(); }, []);
+  const { data: salesData, isLoading } = useQuery({
+    queryKey: ["sales"],
+    queryFn: () => api.sales.list(),
+  });
+
+  const cancelSaleMutation = useMutation({
+    mutationFn: (id: number) => api.sales.cancel(id),
+    onSuccess: () => {
+      toast("Venta cancelada", "success");
+      setDetail(null);
+      setDetailId(null);
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+    },
+    onError: () => {
+      toast("Error al cancelar", "error");
+    },
+  });
 
   async function showDetail(id: number) {
     setDetailId(id);
@@ -45,19 +44,7 @@ export function SalesPage() {
     }
   }
 
-  async function cancelSale(id: number) {
-    try {
-      await api.sales.cancel(id);
-      toast("Venta cancelada", "success");
-      setDetail(null);
-      setDetailId(null);
-      await load();
-    } catch {
-      toast("Error al cancelar", "error");
-    }
-  }
-
-  if (loading) return <Loading text="Cargando..." />;
+  if (isLoading) return <Loading text="Cargando..." />;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
@@ -76,7 +63,7 @@ export function SalesPage() {
             </Table.Row>
           </Table.Head>
           <Table.Body>
-            {sales.map((sale) => (
+            {salesData?.map((sale) => (
               <Table.Row key={sale.id} className={`cursor-pointer ${detailId === sale.id ? "bg-primary-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
                 <Table.Cell className="font-medium text-zinc-800">{sale.receiptNumber}</Table.Cell>
                 <Table.Cell className="text-xs text-zinc-500 whitespace-nowrap">
@@ -98,7 +85,10 @@ export function SalesPage() {
                       variant="ghost"
                       size="sm"
                       className="text-red-600 hover:text-red-700"
-                      onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cancelSaleMutation.mutate(sale.id);
+                      }}
                     >
                       {sale.status === "in_progress" ? "Cancelar orden" : "Cancelar"}
                     </Button>
@@ -106,7 +96,7 @@ export function SalesPage() {
                 </Table.Cell>
               </Table.Row>
             ))}
-            {sales.length === 0 && <Table.Empty colSpan={6}>No hay ventas registradas</Table.Empty>}
+            {salesData?.length === 0 && <Table.Empty colSpan={6}>No hay ventas registradas</Table.Empty>}
           </Table.Body>
         </Table>
       </Card>

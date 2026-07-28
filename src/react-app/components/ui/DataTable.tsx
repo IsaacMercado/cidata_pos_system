@@ -36,7 +36,7 @@ interface DataTableState {
   filters: Record<string, string>;
 }
 
-const sortIcons = {
+const sortIcons: Record<string, ComponentChildren> = {
   asc: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>,
   desc: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>,
   null: <svg className="w-4 h-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>,
@@ -132,7 +132,7 @@ export function DataTable<T extends Record<string, any>>({
           <Input
             placeholder={searchPlaceholder}
             value={state.filters.__search || ""}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => handleSearch((e.target as HTMLInputElement).value)}
             className="max-w-xs"
           />
         </div>
@@ -146,14 +146,14 @@ export function DataTable<T extends Record<string, any>>({
                 <th
                   key={column.key}
                   className={`px-4 py-3 text-left font-medium text-neutral-500 dark:text-neutral-400 text-xs uppercase tracking-wider ${column.headerClassName || ""} ${column.sortable ? "cursor-pointer select-none hover:bg-neutral-100 dark:hover:bg-neutral-800" : ""}`}
-                  style={{ width: column.width, userSelect: column.sortable ? "none" : "auto" }}
+                  style={{ width: column.width, userSelect: column.sortable ? "none" as const : "auto" as const }}
                   onClick={() => column.sortable && handleSort(column.key)}
                 >
                   <div className="flex items-center gap-1.5">
                     <span>{column.header}</span>
                     {column.sortable && (
                       <span className="flex-shrink-0">
-                        {sortIcons[state.sortKey === column.key ? state.sortDirection : null]}
+                        {sortIcons[state.sortKey === column.key ? state.sortDirection ?? "null" : "null"]}
                       </span>
                     )}
                     {column.filterable && (
@@ -162,7 +162,7 @@ export function DataTable<T extends Record<string, any>>({
                         placeholder="Filtrar"
                         className="w-32 text-xs py-1 px-2 mt-1"
                         value={state.filters[column.key] || ""}
-                        onChange={(e) => handleFilterChange(column.key, e.target.value)}
+                        onChange={(e) => handleFilterChange(column.key, (e.target as HTMLInputElement).value)}
                         onClick={(e) => e.stopPropagation()}
                       />
                     )}
@@ -226,7 +226,7 @@ export function DataTable<T extends Record<string, any>>({
             </Button>
             <Select
               value={String(state.pageSize)}
-              onChange={(e) => setState((prev) => ({ ...prev, pageSize: parseInt(e.target.value), page: 1 }))}
+              onChange={(e) => setState((prev) => ({ ...prev, pageSize: parseInt((e.target as HTMLSelectElement).value), page: 1 }))}
               options={[
                 { value: "10", label: "10 por página" },
                 { value: "25", label: "25 por página" },

@@ -1,7 +1,7 @@
-import { Eye, Package, Plus, X as XIcon } from "lucide-react";
-import { useEffect, useState } from "preact/hooks";
-import { useToast } from "../components/pos/Toast";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Eye, Package, Plus, X as XIcon } from "lucide-react";
+import { useState } from "preact/hooks";
+import { useToast } from "../components/pos/Toast";
 import { Badge, Button, Card, CardTitle, Dialog, DialogClose, Input, Loading, PageHeader, Select, Table } from "../components/ui";
 import { api } from "../lib/api";
 
@@ -10,14 +10,14 @@ export function PurchaseOrdersPage() {
   const [viewOrder, setViewOrder] = useState<any | null>(null);
   const queryClient = useQueryClient();
 
-  const { isLoading: loading, data: orders } = useQuery({
+  const { isLoading: loading, data: orders = [] } = useQuery({
     queryKey: ['orders'],
-    queryFn: api.purchases.list,
+    queryFn: () => api.purchases.list(),
   });
 
-  const { data: products } = useQuery({
+  const { data: products = [] } = useQuery({
     queryKey: ['products'],
-    queryFn: api.products.list,
+    queryFn: () => api.products.list(),
   });
 
   if (loading) return <Loading text="Cargando..." />;
@@ -94,7 +94,7 @@ export function PurchaseOrdersPage() {
 }
 
 function CreatePurchaseOrder({ products, onClose, onCreated }: {
-  products: any[] | unknown;
+  products: any[];
   onClose: () => void;
   onCreated: () => void
 }) {
@@ -106,7 +106,7 @@ function CreatePurchaseOrder({ products, onClose, onCreated }: {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  const activeProducts = products?.filter((p: any) => p.isActive) || [];
+  const activeProducts = (products || []).filter((p: any) => p.isActive);
 
   const addItem = () => setItems([...items, { productId: 0, quantity: 1, unitCost: 0 }]);
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));

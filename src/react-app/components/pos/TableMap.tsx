@@ -1,14 +1,8 @@
-import { useState, useRef } from "preact/hooks";
+import type { TargetedMouseEvent } from "preact";
+import { useRef, useState } from "preact/hooks";
 import { useLocation } from "wouter-preact";
-import { Button, Card, CardHeader, CardTitle, CardContent, Input } from "../../components/ui";
-import { useToast } from "./Toast";
+import { Button, Card } from "../../components/ui";
 import { api } from "../../lib/api";
-import { paymentMethods } from "../../lib/paymentMethods";
-import { useOnlineStatus } from "../../lib/useOnlineStatus";
-import { Plus, Trash2, GripVertical, Eye, ChevronLeft, ChevronRight } from "lucide-react";
-
-type TableShape = "circle" | "rectangle";
-type TableForm = { name: string; capacity: number; shape: TableShape };
 
 const colorByStatus: Record<string, string> = {
   available: "bg-emerald-500",
@@ -38,7 +32,6 @@ interface TableMapProps {
 }
 
 export function TableMap({ restaurant, onClose, onAddTable, onRemoveTable, onUpdateTablePosition, onSelectTable, selectedTableId, draftsByTable, expanded, setExpanded }: TableMapProps) {
-  const [showTableForm, setShowTableForm] = useState(false);
   const [dragging, setDragging] = useState<number | null>(null);
   const dragRef = useRef({ startX: 0, startY: 0, tableId: 0 });
   const tables = restaurant?.tables || [];
@@ -55,11 +48,11 @@ export function TableMap({ restaurant, onClose, onAddTable, onRemoveTable, onUpd
     return { total, itemsCount, hasOpenOrder: Boolean(table.openSaleId), receiptNumber: table.openReceiptNumber as string | null };
   }
 
-  function renderPlanButton(table: any, expanded = false) {
+  function renderPlanButton(table: any, isExpanded = false) {
     const isSelected = table.id === selectedTableId;
     const summary = getTableSummary(table);
-    const width = expanded ? Math.max(table.width + 18, 86) : table.width;
-    const height = table.shape === "circle" ? width : (expanded ? Math.max(table.height + 12, 72) : table.height);
+    const width = isExpanded ? Math.max(table.width + 18, 86) : table.width;
+    const height = table.shape === "circle" ? width : (isExpanded ? Math.max(table.height + 12, 72) : table.height);
 
     return (
       <button
@@ -69,17 +62,17 @@ export function TableMap({ restaurant, onClose, onAddTable, onRemoveTable, onUpd
         onClick={() => onSelectTable(table)}
         onMouseDown={(e) => onDragStart(e, table)}
       >
-<div className="pointer-events-none text-center leading-tight">
-            <div className={`${expanded ? "text-xs" : "text-xs"} font-bold`}>{table.name}</div>
-            <div className={`${expanded ? "text-xs" : "text-xs"} opacity-80`}>{table.capacity} pax</div>
-            {summary.total > 0 && <div className={`${expanded ? "text-xs" : "text-xs"} font-semibold opacity-95`}>${summary.total.toFixed(2)}</div>}
-            {summary.itemsCount > 0 && <div className="text-xs opacity-90">+{summary.itemsCount} nuevos</div>}
-          </div>
+        <div className="pointer-events-none text-center leading-tight">
+          <div className="text-xs font-bold">{table.name}</div>
+          <div className="text-xs opacity-80">{table.capacity} pax</div>
+          {summary.total > 0 && <div className="text-xs font-semibold opacity-95">${summary.total.toFixed(2)}</div>}
+          {summary.itemsCount > 0 && <div className="text-xs opacity-90">+{summary.itemsCount} nuevos</div>}
+        </div>
       </button>
     );
   }
 
-  function onDragStart(e: React.MouseEvent<HTMLDivElement>, table: any) {
+  function onDragStart(e: TargetedMouseEvent<HTMLButtonElement>, table: any) {
     e.preventDefault();
     dragRef.current = { startX: e.clientX - table.posX, startY: e.clientY - table.posY, tableId: table.id };
     setDragging(table.id);
@@ -110,7 +103,7 @@ export function TableMap({ restaurant, onClose, onAddTable, onRemoveTable, onUpd
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            <ChevronLeft size={14} className="mr-1" /> Mesas
+            <ChevronLeftIcon /> Mesas
           </Button>
           <h2 className="text-xl font-bold">{restaurant.name}</h2>
           <p className="text-sm text-slate-500">Editor de plano del salón.</p>
@@ -121,36 +114,19 @@ export function TableMap({ restaurant, onClose, onAddTable, onRemoveTable, onUpd
         </div>
       </div>
 
-      {showTableForm && (
-        <form className="mb-4 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-cyan-50 p-4" onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); onSaveTable({ name: fd.get("name"), capacity: parseInt(fd.get("capacity")), shape: fd.get("shape") }); }}>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Input label="Nombre" name="name" required />
-            <Input label="Capacidad" name="capacity" type="number" min="1" required />
-          </div>
-          <div className="mt-3 flex gap-2">
-            {(["circle", "rectangle"] as const).map((shape) => (
-              <label key={shape} className={`rounded-xl border px-3 py-2 text-sm cursor-pointer ${tableForm.watch("shape") === shape ? "border-violet-500 bg-white text-violet-700" : "border-slate-200 bg-white text-slate-600"}`}>
-                <input className="sr-only" type="radio" name="shape" value={shape} defaultChecked={tableForm.defaultValues.shape === shape} />
-                {shape === "circle" ? "Redonda" : "Rectangular"}
-              </label>
-            ))}
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button variant="accent">Guardar mesa</Button>
-            <Button variant="outline" type="button" onClick={() => setShowTableForm(false)}>Cancelar</Button>
-          </div>
-        </form>
-      )}
-
       <Card className="mb-4">
         <div className="flex items-center gap-4 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
           <span className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-emerald-500" /> Libre</span>
           <span className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-rose-500" /> En servicio</span>
           <span className="ml-auto">Arrastra para reorganizar mesas</span>
         </div>
-        <div className="relative min-h-[420px] overflow-auto p-4">
-          {tables.map((table: any) => renderPlanButton(table))}
-          {tables.length === 0 && <div className="flex h-[380px] items-center justify-center text-sm text-slate-400">Crea la primera mesa para este salón.</div>}
+        <div
+          className="relative min-h-[420px] overflow-auto p-4"
+          onMouseEnter={() => setExpanded(true)}
+          onMouseLeave={() => setExpanded(false)}
+        >
+          {tables.map((table: any) => renderPlanButton(table, expanded))}
+          {tables.length === 0 && <div className="flex h-[380px] items-center justify-center text-sm text-slate-400">Pulsa "Nueva mesa" para crear la primera.</div>}
         </div>
       </Card>
 
@@ -168,5 +144,13 @@ export function TableMap({ restaurant, onClose, onAddTable, onRemoveTable, onUpd
         ))}
       </Card>
     </div>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg className="w-3.5 h-3.5 mr-1 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+    </svg>
   );
 }

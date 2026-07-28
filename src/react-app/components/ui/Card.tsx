@@ -6,9 +6,10 @@ interface CardProps {
   padding?: boolean;
   hover?: boolean;
   bordered?: boolean;
+  style?: Record<string, string | number>;
 }
 
-export function Card({ children, className = "", padding = true, hover = false, bordered = true }: CardProps) {
+export function Card({ children, className = "", padding = true, hover = false, bordered = true, style }: CardProps) {
   return (
     <div
       className={`
@@ -18,6 +19,7 @@ export function Card({ children, className = "", padding = true, hover = false, 
         ${hover ? "transition-shadow hover:shadow-lg" : ""}
         ${className}
       `}
+      style={style}
     >
       {children}
     </div>
