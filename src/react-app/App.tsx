@@ -1,15 +1,22 @@
+import {
+  QueryClient,
+  QueryClientProvider
+} from '@tanstack/react-query';
+import { DollarSign, LayoutDashboard, Package, Receipt, ShoppingCart, Users, UtensilsCrossed, Warehouse } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+
 import { Route, Switch, useLocation } from "wouter-preact";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import { OfflineBanner } from "./components/OfflineBanner";
-import { RxDatabaseProviderWrapper } from "./components/RxDatabaseProviderWrapper";
 import { Sidebar } from "./components/pos/Sidebar";
 import { ToastProvider } from "./components/pos/Toast";
-import { Loading } from "./components/ui";
+import { CommandPaletteProvider, CommandRegistration, Loading } from "./components/ui";
+
 import { api } from "./lib/api";
 import { syncPendingOps } from "./lib/db";
 import { clearSession, loadSession, saveSession } from "./lib/session";
 import { useOnlineStatus } from "./lib/useOnlineStatus";
+
 import { AdminPage } from "./pages/AdminPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { ExchangeRatePage } from "./pages/ExchangeRatePage";
@@ -20,6 +27,7 @@ import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
 import { RestaurantsPage } from "./pages/RestaurantsPage";
 import { SalesPage } from "./pages/SalesPage";
 import { WelcomePage } from "./pages/WelcomePage";
+
 import "./style.css";
 
 export type UserInfo = {
@@ -31,17 +39,101 @@ export type UserInfo = {
   is_superuser: number;
 };
 
+const queryClient = new QueryClient()
+
 const ALL_SCREENS = ["pos", "products", "customers", "sales", "restaurants", "purchases"];
 
 function normalizeUser(u: any): UserInfo {
   return { ...u, is_superuser: u.isSuperuser ?? u.is_superuser ?? 0 };
 }
 
-// Fallback permissions when offline and not cached: superuser gets everything,
-// cashier keeps operating screens so the shift can continue.
 function offlinePermissions(u: UserInfo): string[] {
   return u.is_superuser ? [...ALL_SCREENS, "users"] : ["pos", "customers", "sales"];
 }
+
+const globalCommands = [
+  {
+    id: "nav-dashboard",
+    label: "Ir al Inicio",
+    description: "Navegar al dashboard principal",
+    shortcut: "G D",
+    icon: <LayoutDashboard size={16} />,
+    action: () => window.location.href = "/",
+    keywords: ["inicio", "dashboard", "home"],
+  },
+  {
+    id: "nav-pos",
+    label: "Ir a POS",
+    description: "Abrir punto de venta",
+    shortcut: "G P",
+    icon: <ShoppingCart size={16} />,
+    action: () => window.location.href = "/pos",
+    keywords: ["venta", "punto de venta", "cobrar"],
+  },
+  {
+    id: "nav-products",
+    label: "Ir a Productos",
+    description: "Gestionar inventario",
+    shortcut: "G R",
+    icon: <Package size={16} />,
+    action: () => window.location.href = "/products",
+    keywords: ["inventario", "stock", "articulos"],
+  },
+  {
+    id: "nav-customers",
+    label: "Ir a Clientes",
+    description: "Administrar clientes",
+    shortcut: "G C",
+    icon: <Users size={16} />,
+    action: () => window.location.href = "/customers",
+    keywords: ["cliente", "clientes"],
+  },
+  {
+    id: "nav-sales",
+    label: "Ir a Ventas",
+    description: "Ver historial de ventas",
+    shortcut: "G V",
+    icon: <Receipt size={16} />,
+    action: () => window.location.href = "/sales",
+    keywords: ["historial", "comprobantes"],
+  },
+  {
+    id: "nav-restaurants",
+    label: "Ir a Restaurante",
+    description: "Gestionar mesas y pedidos",
+    shortcut: "G T",
+    icon: <UtensilsCrossed size={16} />,
+    action: () => window.location.href = "/restaurants",
+    keywords: ["mesas", "mesero", "comanda"],
+  },
+  {
+    id: "nav-purchases",
+    label: "Ir a Inventario",
+    description: "Órdenes de compra y recepciones",
+    shortcut: "G I",
+    icon: <Warehouse size={16} />,
+    action: () => window.location.href = "/purchases",
+    keywords: ["recepcion", "compra", "proveedor"],
+  },
+  {
+    id: "nav-exchange",
+    label: "Ir a Tasa BCV",
+    description: "Ver y actualizar tasa de cambio",
+    shortcut: "G X",
+    icon: <DollarSign size={16} />,
+    action: () => window.location.href = "/exchange-rate",
+    keywords: ["tasa", "cambio", "dolar", "bcv"],
+  },
+  {
+    id: "nav-admin",
+    label: "Ir a Administración",
+    description: "Gestionar usuarios y permisos",
+    shortcut: "G A",
+    icon: <LayoutDashboard size={16} />,
+    action: () => window.location.href = "/admin",
+    keywords: ["usuarios", "permisos", "admin"],
+  },
+];
 
 export function App() {
   const online = useOnlineStatus();
@@ -134,57 +226,62 @@ export function App() {
   if (restoring) return <Loading fullPage text="Restaurando sesión..." />;
 
   return (
-    <RxDatabaseProviderWrapper>
-    <ToastProvider>
-      <div className="flex min-h-dvh flex-col md:flex-row">
-        {!online && <OfflineBanner />}
+    <QueryClientProvider client={queryClient}>
+      <CommandPaletteProvider>
+        <CommandRegistration commands={globalCommands} />
+        <ToastProvider>
+          <div className="flex min-h-dvh flex-col md:flex-row">
+            <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary-600 focus:text-white focus:rounded-lg focus:shadow-lg">
+              Saltar al contenido principal
+            </a>
+            {!online && <OfflineBanner />}
 
-        {user && (
-          <>
-            <Sidebar
-              user={user}
-              permissions={permissions}
-              onLogout={handleLogout}
-              onChangePasswordClick={() => setPasswordModalOpen(true)}
-            />
-            <header className="md:hidden fixed right-4 top-3 z-[100] flex items-center gap-3">
-              <span className="text-sm font-bold text-violet-400">
-                {user.username}
-              </span>
-            </header>
-          </>
-        )}
-
-        <main className={`flex-1 overflow-y-auto ${user ? "pt-14 md:pt-4 pb-20 md:pb-4 px-3 md:px-6" : ""}`}>
-          <Switch>
-            <Route path="/login">
-              <LoginPage onLogin={handleLogin} />
-            </Route>
-            <Route path="/">
-              {user ? <WelcomePage user={user} permissions={permissions} /> : null}
-            </Route>
             {user && (
               <>
-                <Route path="/pos" component={PosPage} />
-                <Route path="/products" component={ProductsPage} />
-                <Route path="/customers" component={CustomersPage} />
-                <Route path="/sales" component={SalesPage} />
-                <Route path="/restaurants" component={RestaurantsPage} />
-                <Route path="/restaurants/:id/:view?" component={RestaurantsPage} />
-                <Route path="/admin" component={AdminPage} />
-                <Route path="/purchases" component={PurchaseOrdersPage} />
-                <Route path="/exchange-rate" component={ExchangeRatePage} />
+                <Sidebar
+                  user={user}
+                  permissions={permissions}
+                  onLogout={handleLogout}
+                  onChangePasswordClick={() => setPasswordModalOpen(true)}
+                />
+                <header className="md:hidden fixed right-4 top-3 z-[100] flex items-center gap-3">
+                  <span className="text-sm font-bold text-violet-400">
+                    {user.username}
+                  </span>
+                </header>
               </>
             )}
-          </Switch>
-        </main>
 
-        <ChangePasswordModal
-          open={passwordModalOpen}
-          onClose={() => setPasswordModalOpen(false)}
-        />
-      </div>
-      </ToastProvider>
-    </RxDatabaseProviderWrapper>
+            <main id="main-content" className={`flex-1 ${user ? "pt-14 md:pt-4 pb-4 md:pb-4 px-3 md:px-6" : ""} min-h-0`}>
+              <Switch>
+                <Route path="/login">
+                  <LoginPage onLogin={handleLogin} />
+                </Route>
+                <Route path="/">
+                  {user ? <WelcomePage user={user} permissions={permissions} /> : null}
+                </Route>
+                {user && (
+                  <>
+                    <Route path="/pos" component={PosPage} />
+                    <Route path="/products" component={ProductsPage} />
+                    <Route path="/customers" component={CustomersPage} />
+                    <Route path="/sales" component={SalesPage} />
+                    <Route path="/restaurants/:view?" component={RestaurantsPage} />
+                    <Route path="/admin" component={AdminPage} />
+                    <Route path="/purchases" component={PurchaseOrdersPage} />
+                    <Route path="/exchange-rate" component={ExchangeRatePage} />
+                  </>
+                )}
+              </Switch>
+            </main>
+
+            <ChangePasswordModal
+              open={passwordModalOpen}
+              onClose={() => setPasswordModalOpen(false)}
+            />
+          </div>
+        </ToastProvider>
+      </CommandPaletteProvider>
+    </QueryClientProvider>
   );
 }

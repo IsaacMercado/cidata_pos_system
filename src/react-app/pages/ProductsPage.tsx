@@ -3,7 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { useToast } from "../components/pos/Toast";
 import { api } from "../lib/api";
-import { Badge, Button, Input, Loading, Modal, PageHeader, Select, Table } from "../components/ui";
+import { Badge, Button, Input, Textarea, Loading, Dialog, PageHeader, Select, Table, Card, CardHeader, CardTitle, CardContent, CardFooter } from "../components/ui";
 
 const CATEGORY_ICONS: Record<string, typeof Coffee> = {
   Bebidas: Coffee,
@@ -148,107 +148,105 @@ export function ProductsPage() {
         }
       />
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.Header>Nombre</Table.Header>
-            <Table.Header className="hidden sm:table-cell">SKU</Table.Header>
-            <Table.Header className="hidden md:table-cell">Categoría</Table.Header>
-            <Table.Header className="text-right">Precio</Table.Header>
-            <Table.Header className="text-right">Stock</Table.Header>
-            <Table.Header>Estado</Table.Header>
-            <Table.Header>Acciones</Table.Header>
-          </Table.Row>
-        </Table.Head>
-        <Table.Body>
-          {products.map((p: any) => (
-            <Table.Row key={p.id}>
-              <Table.Cell className="font-medium text-zinc-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center flex-shrink-0">
-                    {p.category ? <CategoryIcon name={p.category.name} /> : <Package size={14} className="text-indigo-500" />}
-                  </span>
-                  {p.name}
-                </div>
-              </Table.Cell>
-              <Table.Cell className="text-zinc-400 text-xs hidden sm:table-cell">{p.code || "—"}</Table.Cell>
-              <Table.Cell className="text-zinc-500 hidden md:table-cell">
-                {p.category?.name && <Badge>{p.category.name}</Badge>}
-              </Table.Cell>
-              <Table.Cell className="text-right font-semibold text-zinc-800">${p.price.toFixed(2)}</Table.Cell>
-              <Table.Cell className="text-right">
-                <span className={`font-medium text-sm ${p.currentStock <= 5 ? "text-amber-600" : p.currentStock === 0 ? "text-red-500" : "text-zinc-800"}`}>
-                  {p.currentStock}
-                </span>
-              </Table.Cell>
-              <Table.Cell>
-                <button
-                  onClick={() => toggleActive(p)}
-                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
-                    p.isActive
-                      ? "text-emerald-700 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
-                      : "text-zinc-400 border-zinc-200 bg-zinc-50 hover:bg-zinc-100"
-                  }`}
-                >
-                  {p.isActive ? "Activo" : "Inactivo"}
-                </button>
-              </Table.Cell>
-              <Table.Cell>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => openEdit(p)} className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors flex items-center gap-1">
-                    <Pencil size={12} />
-                    Editar
-                  </button>
-                  <button onClick={() => remove(p.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
-                    <Trash2 size={12} />
-                    Eliminar
-                  </button>
-                </div>
-              </Table.Cell>
+      <Card>
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.Header>Nombre</Table.Header>
+              <Table.Header className="hidden sm:table-cell">SKU</Table.Header>
+              <Table.Header className="hidden md:table-cell">Categoría</Table.Header>
+              <Table.Header className="text-right">Precio</Table.Header>
+              <Table.Header className="text-right">Stock</Table.Header>
+              <Table.Header>Estado</Table.Header>
+              <Table.Header>Acciones</Table.Header>
             </Table.Row>
-          ))}
-          {products.length === 0 && <Table.Empty colSpan={7}>No hay productos</Table.Empty>}
-        </Table.Body>
-      </Table>
-
-      <Modal open={modalOpen} onClose={closeModal} size="sm">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <h2 className="text-lg font-bold">{editingProduct ? "Editar Producto" : "Nuevo Producto"}</h2>
-
-          <Input label="Nombre" {...register("name", { required: true })} />
-
-          <div className="flex gap-3">
-            <Input label="Precio" type="number" step="0.01" className="flex-1" {...register("price", { required: true })} />
-            <Input label="Costo" type="number" step="0.01" className="flex-1" {...register("cost")} />
-          </div>
-
-          <div className="flex gap-3">
-            <Input label="Código" className="flex-1" {...register("code")} />
-            <Input label="Stock" type="number" className="flex-1" readOnly value={stockDisplay} />
-          </div>
-
-          <Select label="Categoría" {...register("categoryId")}>
-            <option value="">Sin categoría</option>
-            {categories.map((c: any) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+          </Table.Head>
+          <Table.Body>
+            {products.map((p: any) => (
+              <Table.Row key={p.id}>
+                <Table.Cell className="font-medium text-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
+                      {p.category ? <CategoryIcon name={p.category.name} /> : <Package size={14} className="text-primary-600" />}
+                    </span>
+                    {p.name}
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="text-zinc-400 text-xs hidden sm:table-cell">{p.code || "—"}</Table.Cell>
+                <Table.Cell className="text-zinc-500 hidden md:table-cell">
+                  {p.category?.name && <Badge variant="secondary">{p.category.name}</Badge>}
+                </Table.Cell>
+                <Table.Cell className="text-right font-semibold text-zinc-800">${p.price.toFixed(2)}</Table.Cell>
+                <Table.Cell className="text-right">
+                  <Badge
+                    variant={p.currentStock === 0 ? "danger" : p.currentStock <= 5 ? "warning" : "success"}
+                    dot
+                  >
+                    {p.currentStock}
+                  </Badge>
+                </Table.Cell>
+                <Table.Cell>
+                  <Badge
+                    variant={p.isActive ? "success" : "secondary"}
+                    size="sm"
+                    onClick={() => toggleActive(p)}
+                    className="cursor-pointer"
+                  >
+                    {p.isActive ? "Activo" : "Inactivo"}
+                  </Badge>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
+                      <Pencil size={12} /> Editar
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => remove(p.id)}>
+                      <Trash2 size={12} /> Eliminar
+                    </Button>
+                  </div>
+                </Table.Cell>
+              </Table.Row>
             ))}
-          </Select>
+            {products.length === 0 && <Table.Empty colSpan={7}>No hay productos</Table.Empty>}
+          </Table.Body>
+        </Table>
+      </Card>
 
-          <label className="block">
-            <span className="text-sm text-zinc-500">Descripción</span>
-            <textarea
-              {...register("description")}
-              rows={2}
-              className="mt-1 w-full px-3 py-1.5 text-sm border border-zinc-300 rounded outline-none focus:border-zinc-500"
+      <Dialog open={modalOpen} onClose={closeModal} size="sm">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+          <CardHeader>
+            <CardTitle>{editingProduct ? "Editar Producto" : "Nuevo Producto"}</CardTitle>
+            <Button variant="ghost" size="icon" onClick={closeModal} aria-label="Cerrar">✕</Button>
+          </CardHeader>
+
+          <CardContent className="space-y-4 pt-0">
+            <Input label="Nombre" {...register("name", { required: true })} />
+
+            <div className="flex gap-3">
+              <Input label="Precio" type="number" step="0.01" className="flex-1" {...register("price", { required: true })} />
+              <Input label="Costo" type="number" step="0.01" className="flex-1" {...register("cost")} />
+            </div>
+
+            <div className="flex gap-3">
+              <Input label="Código" className="flex-1" {...register("code")} />
+              <Input label="Stock" type="number" className="flex-1" readOnly value={stockDisplay} />
+            </div>
+
+            <Select
+              label="Categoría"
+              {...register("categoryId")}
+              options={categories.map((c: any) => ({ value: String(c.id), label: c.name }))}
             />
-          </label>
 
-          <div className="flex gap-2 justify-end pt-2">
+            <Textarea label="Descripción" {...register("description")} rows={2} />
+          </CardContent>
+
+          <CardFooter className="justify-end">
             <Button type="button" variant="ghost" onClick={closeModal}>Cancelar</Button>
             <Button type="submit">{editingProduct ? "Guardar cambios" : "Guardar"}</Button>
-          </div>
+          </CardFooter>
         </form>
-      </Modal>
+      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState, useEffect } from "preact/hooks";
 import { useLocation, useRoute } from "wouter-preact";
 import {
   LayoutDashboard,
@@ -15,6 +15,8 @@ import {
   Key,
   Warehouse,
   DollarSign,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 const allLinks = [
@@ -45,6 +47,23 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
       return false;
     }
   });
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("darkMode");
+      if (stored !== null) return stored === "true";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+    localStorage.setItem("darkMode", String(darkMode));
+  }, [darkMode]);
 
   function toggleCollapse() {
     try {
@@ -61,7 +80,7 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
     <>
       <button
         onClick={() => setOpen(!open)}
-        className="fixed top-3 left-3 z-50 md:hidden bg-zinc-900 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
+        className="fixed top-3 left-3 z-50 md:hidden bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg border border-zinc-200 dark:border-zinc-700"
       >
         <span className="text-lg">{open ? "\u2715" : "\u2630"}</span>
       </button>
@@ -74,27 +93,36 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-40 bg-zinc-900 text-zinc-100 flex flex-col transition-all duration-200 ${
+        className={`fixed md:static inset-y-0 left-0 z-40 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 flex flex-col transition-all duration-200 border-r border-zinc-200 dark:border-zinc-800 ${
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         } ${collapsed ? "w-20" : "w-64"}`}
       >
-        <div className="px-5 py-5 border-b border-zinc-800 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center text-sm font-bold flex-shrink-0">
+        <div className="px-5 py-5 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center text-sm font-bold flex-shrink-0 text-white">
             P
           </div>
           {!collapsed && (
             <div className="overflow-hidden">
               <h1 className="font-bold tracking-tight">pos-system</h1>
-              <p className="text-[10px] text-zinc-500">Punto de Venta</p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Punto de Venta</p>
             </div>
           )}
-          <button
-            onClick={toggleCollapse}
-            className="ml-auto text-zinc-400 hover:text-zinc-100 text-xs px-2 py-1 rounded hidden md:block"
-            title={collapsed ? "Expandir" : "Colapsar"}
-          >
-            {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={toggleCollapse}
+              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs px-2 py-1 rounded hidden md:block"
+              title={collapsed ? "Expandir" : "Colapsar"}
+            >
+              {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            </button>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs px-2 py-1 rounded"
+              title={darkMode ? "Modo claro" : "Modo oscuro"}
+            >
+              {darkMode ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+          </div>
         </div>
 
         <nav className="flex-1 py-3 space-y-0.5 px-2">
@@ -112,8 +140,8 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
                 }}
                 className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors ${
                   isActive
-                    ? "bg-indigo-500/20 text-indigo-300 font-medium"
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                    ? "bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 font-medium"
+                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 } ${collapsed ? "justify-center" : ""}`}
               >
                 <span className="w-5 text-center flex-shrink-0">
@@ -135,8 +163,8 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
               }}
               className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-colors ${
                 location.pathname === "/admin"
-                  ? "bg-indigo-500/20 text-indigo-300 font-medium"
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                  ? "bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 font-medium"
+                  : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
               } ${collapsed ? "justify-center" : ""}`}
             >
               <span className="w-5 text-center flex-shrink-0">
@@ -147,22 +175,22 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
           )}
         </nav>
 
-        <div className="px-4 py-3 border-t border-zinc-800 space-y-2">
+        <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
           {user && !collapsed && (
-            <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{user.email}</p>
           )}
           {user ? (
             <>
               <button
                 onClick={onChangePasswordClick}
-                className="w-full py-2 text-xs text-zinc-400 hover:text-violet-400 transition-colors flex items-center gap-2"
+                className="w-full py-2 text-xs text-zinc-600 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors flex items-center gap-2"
               >
                 <Key size={14} />
                 {!collapsed && "Cambiar Contraseña"}
               </button>
               <button
                 onClick={onLogout}
-                className="w-full py-2 text-xs text-zinc-400 hover:text-red-400 transition-colors flex items-center gap-2"
+                className="w-full py-2 text-xs text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center gap-2"
               >
                 <LogOut size={14} />
                 {!collapsed && "Cerrar Sesión"}
@@ -171,7 +199,7 @@ export function Sidebar({ user, permissions, onLogout, onChangePasswordClick }: 
           ) : (
             <button
               onClick={() => navigate("/login")}
-              className="w-full py-2 text-xs text-zinc-400 hover:text-violet-400 transition-colors flex items-center gap-2"
+              className="w-full py-2 text-xs text-zinc-600 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors flex items-center gap-2"
             >
               <LogIn size={14} />
               {!collapsed && "Iniciar Sesión"}

@@ -32,13 +32,12 @@ export function ReceiptModal({
       onClose={onClose}
       className="rounded-2xl shadow-2xl border border-zinc-200 p-0 backdrop:bg-black/30 w-full max-w-sm m-auto print:shadow-none print:border-none"
     >
-      <div className="p-6 space-y-4">
+      <div className="receipt-print p-6 space-y-4" data-receipt-modal>
         <div className="text-center border-b border-zinc-100 pb-4">
           <h2 className="text-lg font-bold text-zinc-800">pos-system</h2>
           <p className="text-xs text-zinc-400">Punto de Venta</p>
           <p className="text-xs text-zinc-400 mt-1">
             {(() => {
-              // API may return created_at (snake_case) or createdAt (camelCase).
               const raw = (sale as any).created_at ?? (sale as any).createdAt;
               if (!raw) return "";
               const d = new Date(raw);

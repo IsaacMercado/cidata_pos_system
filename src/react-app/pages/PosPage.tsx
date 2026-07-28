@@ -1,25 +1,27 @@
 import {
-  Coffee,
-  Milk,
-  Minus,
-  Package,
-  Plus,
-  Popcorn,
-  Sandwich,
-  Search,
-  ShoppingCart,
-  Sparkles,
-  X,
+    Coffee,
+    Milk,
+    Minus,
+    Package,
+    Plus,
+    Popcorn,
+    Sandwich,
+    Search,
+    ShoppingCart,
+    Sparkles,
+    X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { useLiveRxQuery } from 'rxdb/plugins/react';
+import type { RxDatabase } from "rxdb";
+import { RxDatabaseProvider, useLiveRxQuery } from 'rxdb/plugins/react';
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
-import { Button, Loading, Modal } from "../components/ui";
+import { Button, Dialog, Loading } from "../components/ui";
 import { api } from "../lib/api";
+import { getDatabase, type ProductDoc, type RxCollections } from "../lib/database";
 import { addPendingOp } from "../lib/db";
-import { type ProductDoc } from "../lib/database";
 import type { CartItem, ProductWithCategory, SaleWithItems } from "../lib/types";
+import { useKeyboardShortcuts, type ShortcutConfig } from "../lib/useKeyboardShortcuts";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 
@@ -64,6 +66,24 @@ function createOrder(name?: string): Order {
 }
 
 export function PosPage() {
+  const [db, setDb] = useState<RxDatabase<RxCollections> | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getDatabase().then(setDb).catch((e) => setDbError(e?.message || "Error al iniciar DB"));
+  }, []);
+
+  if (dbError) return <div className="flex h-dvh items-center justify-center p-4 text-center"><p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">{dbError}</p></div>;
+  if (!db) return <Loading spinner text="Cargando catálogo..." />;
+
+  return (
+    <RxDatabaseProvider database={db}>
+      <PosPageContent />
+    </RxDatabaseProvider>
+  );
+}
+
+function PosPageContent() {
   const [products, setProducts] = useState<ProductWithCategory[]>([]);
   const [orders, setOrders] = useState<Order[]>([createOrder("Orden 1")]);
   const [activeOrderId, setActiveOrderId] = useState<number>(1);
@@ -78,6 +98,7 @@ export function PosPage() {
   const [currency, setCurrency] = useState<string>("USD");
   const online = useOnlineStatus();
   const { toast } = useToast();
+
   const productLiveQuery = useMemo(() => ({
       collection: 'products',
       query: {
@@ -85,7 +106,7 @@ export function PosPage() {
           sort: [{ name: 'asc' }],
       }
   }), []);
-  const { results, loading } = useLiveRxQuery<ProductDoc>(productLiveQuery);
+  const { results, loading: productsLoading } = useLiveRxQuery<ProductDoc>(productLiveQuery);
 
   const rate = exchangeRate || 1;
 
@@ -285,236 +306,276 @@ export function PosPage() {
     });
   }
 
-  if (loading) return <Loading spinner text="Cargando..." />;
+  const shortcuts: ShortcutConfig[] = useMemo(() => [
+    { key: "F1", action: () => openPayDialog(), description: "Cobrar (F1)" },
+    { key: "F2", action: () => addOrder(), description: "Nueva orden (F2)" },
+    { key: "F3", action: () => { const input = document.querySelector('input[placeholder="Buscar producto..."]') as HTMLInputElement; input?.focus(); }, description: "Buscar producto (F3)" },
+    { key: "F4", action: () => { setCurrency(currency === "USD" ? "VES" : "USD"); }, description: "Cambiar moneda (F4)" },
+    { key: "Escape", action: () => { setPayDialog(false); setCartOpen(false); }, description: "Cerrar modales (Esc)" },
+    { key: "Delete", action: () => { if (activeOrder.items.length > 0 && !payDialog && !cartOpen) removeOrder(activeOrderId); }, description: "Eliminar orden actual (Supr)" },
+  ], [activeOrderId, activeOrder, payDialog, cartOpen, currency, openPayDialog, addOrder, removeOrder]);
+
+  useKeyboardShortcuts(shortcuts);
+
+  if (productsLoading) return <Loading spinner text="Cargando..." />;
 
   return (
     <>
-      <div className="flex h-full flex-col lg:flex-row">
-      <div className="lg:hidden fixed bottom-4 left-4 right-4 z-[60]">
-          <Button onClick={() => setCartOpen(true)} className="w-full py-3 rounded-xl shadow-lg">
-            <ShoppingCart size={18} />
-            {activeOrder.name} — {symbol}{totalDisplay.toFixed(2)}
-        </Button>
-      </div>
-
-      <div className="flex-1 flex flex-col lg:border-r border-zinc-200 pb-20 lg:pb-0 min-h-0">
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-zinc-200 p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"><Search size={16} /></span>
-              <input
-                type="text"
-                placeholder="Buscar producto..."
-                value={search}
-                onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-                className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-indigo-400 focus:bg-white transition-colors"
-              />
-            </div>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory((e.target as HTMLSelectElement).value)}
-              className="px-3 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-indigo-400 focus:bg-white transition-colors"
-            >
-              <option value="">Todas</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
-            {rate > 0 && <span>Tasa: 1 USD = {rate.toFixed(2)} VES</span>}
-            {CURRENCIES.map((c) => (
-              <button
-                key={c.code}
-                onClick={() => setCurrency(c.code)}
-                className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                  currency === c.code ? "bg-indigo-100 text-indigo-700" : "text-zinc-400 hover:text-zinc-600"
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 content-start min-h-0">
-          {filtered.map((product) => (
-            <button
-              key={product.id}
-              onClick={() => addToCart(product)}
-              disabled={product.currentStock <= 0}
-              className="flex flex-col items-center justify-center p-4 bg-white border border-zinc-200 rounded-xl text-center hover:border-indigo-300 hover:shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-            >
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center mb-2">
-                {product.category ? <CategoryIcon name={product.category.name} /> : <Package size={20} className="text-indigo-500" />}
-              </div>
-              <span className="text-sm font-semibold text-zinc-800 leading-tight">{product.name}</span>
-              <span className="text-xs text-indigo-600 font-medium mt-1">{symbol}{(currency === "VES" ? product.price * rate : product.price).toFixed(2)}</span>
-              {product.currentStock <= 5 && product.currentStock > 0 && (
-                <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded mt-1">
-                  {product.currentStock} uds.
-                </span>
-              )}
-              {product.currentStock === 0 && (
-                <span className="text-[10px] text-red-500 bg-red-50 px-1.5 py-0.5 rounded mt-1">
-                  Agotado
-                </span>
-              )}
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <p className="col-span-full text-center text-zinc-400 py-12 text-sm">Sin resultados</p>
-          )}
-        </div>
-      </div>
-
-      {cartOpen && (
-        <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setCartOpen(false)} />
-      )}
-
-      <div
-        className={`fixed lg:static inset-y-0 right-0 z-40 w-full sm:w-96 bg-zinc-50 flex flex-col shadow-2xl lg:shadow-none transition-transform duration-300 ${
-          cartOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
-        }`}
-      >
-        <div className="px-4 py-3 border-b border-zinc-200 bg-white flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-            <ShoppingCart size={16} /> {activeOrder.name}
-            {itemCount > 0 && (
-              <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                {itemCount}
-              </span>
-            )}
-          </h2>
-          <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600"><X size={18} /></button>
-        </div>
-
-        <div className="px-4 py-2 border-b border-zinc-200 bg-white flex items-center gap-2 overflow-auto">
-          {orders.map((order) => (
-            <button
-              key={order.id}
-              onClick={() => switchOrder(order.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
-                order.id === activeOrderId
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
-              }`}
-            >
-              {order.name}
-              {order.items.length > 0 && (
-                <span className="text-[10px] opacity-60">({order.items.length})</span>
-              )}
-            </button>
-          ))}
-          <Button onClick={addOrder} variant="light" size="sm">
-            <Plus size={14} /> Nueva
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
-          {activeOrder.items.map((item) => (
-            <div key={item.product.id} className="flex items-center gap-3 bg-white p-3 rounded-xl border border-zinc-200">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-zinc-800 truncate">{item.product.name}</p>
-                <p className="text-xs text-zinc-400">{symbol}{(currency === "VES" ? item.product.price * rate : item.product.price).toFixed(2)} c/u</p>
-              </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <Button
-                  onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                  className="w-8 h-8"
-                  size="sm" variant="ghost"
-                ><Minus size={14} /></Button>
-                <span className="w-8 text-center text-sm font-semibold text-zinc-800">{item.quantity}</span>
-                <Button
-                  onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                  className="w-8 h-8"
-                  size="sm" variant="ghost"
-                ><Plus size={14} /></Button>
-              </div>
-            </div>
-          ))}
-          {activeOrder.items.length === 0 && (
-            <div className="text-center py-12">
-              <ShoppingCart size={40} className="mx-auto mb-2 text-zinc-300" />
-              <p className="text-zinc-400 text-sm">Carrito vacío</p>
-              <p className="text-zinc-300 text-xs">Selecciona productos para empezar</p>
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-zinc-200 bg-white p-4 space-y-3">
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between text-zinc-500">
-              <span>Total ({currency})</span>
-              <span className="font-semibold text-zinc-800">{symbol}{totalDisplay.toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            {orders.length > 1 && activeOrder.items.length === 0 && (
-              <Button onClick={() => removeOrder(activeOrder.id)} variant="light" className="flex-1">
-                Descartar
-              </Button>
-            )}
-            <Button onClick={openPayDialog} disabled={activeOrder.items.length === 0 || submitting} variant="primary" className="flex-1 py-3 rounded-xl shadow-lg shadow-indigo-200">
-              Cobrar
+      <div className="flex h-dvh flex-col lg:flex-row">
+        <main className="lg:flex-1 min-w-0 lg:border-r border-zinc-200 dark:border-zinc-800 pb-20 lg:pb-0 min-h-0 flex flex-col">
+          <div className="lg:hidden fixed bottom-4 left-4 right-4 z-[60]">
+            <Button onClick={() => setCartOpen(true)} className="w-full py-3 rounded-xl shadow-lg">
+              <ShoppingCart size={18} />
+              {activeOrder.name} — {symbol}{totalDisplay.toFixed(2)}
             </Button>
           </div>
+
+          <div className="sticky top-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-800 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"><Search size={16} /></span>
+                <input
+                  type="text"
+                  placeholder="Buscar producto..."
+                  value={search}
+                  onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:border-indigo-400 focus:bg-white dark:focus:bg-zinc-900 transition-colors"
+                />
+              </div>
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory((e.target as HTMLSelectElement).value)}
+                className="px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 transition-colors"
+              >
+                <option value="">Todas</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+              {rate > 0 && <span>Tasa: 1 USD = {rate.toFixed(2)} VES</span>}
+              {CURRENCIES.map((c) => (
+                <button
+                  key={c.code}
+                  onClick={() => setCurrency(c.code as "USD" | "VES")}
+                  className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                    currency === c.code ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 content-start min-h-0">
+            {filtered.map((product) => (
+              <button
+                key={product.id}
+                onClick={() => addToCart(product)}
+                disabled={product.currentStock <= 0}
+                className="flex flex-col items-center justify-center p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-center hover:border-indigo-300 hover:shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              >
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center mb-2">
+                  {product.category ? <CategoryIcon name={product.category.name} /> : <Package size={20} className="text-indigo-500" />}
+                </div>
+                <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 leading-tight">{product.name}</span>
+                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-1">{symbol}{(currency === "VES" ? product.price * rate : product.price).toFixed(2)}</span>
+                {product.currentStock <= 5 && product.currentStock > 0 && (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded mt-1">{product.currentStock} uds.</span>
+                )}
+                {product.currentStock === 0 && (
+                  <span className="text-[10px] text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded mt-1">Agotado</span>
+                )}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="col-span-full text-center text-zinc-400 py-12 text-sm">Sin resultados</p>
+            )}
+          </div>
+        </main>
+
+        <aside className="hidden lg:flex lg:flex-col lg:w-96 lg:border-l lg:border-zinc-200 dark:lg:border-zinc-800 lg:bg-zinc-50 dark:lg:bg-zinc-900 lg:shadow-2xl">
+          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <ShoppingCart size={16} /> {activeOrder.name}
+              {itemCount > 0 && (
+                <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{itemCount}</span>
+              )}
+            </h2>
+            <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"><X size={18} /></button>
+          </div>
+
+          <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2 overflow-auto">
+            {orders.map((order) => (
+              <button
+                key={order.id}
+                onClick={() => switchOrder(order.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
+                  order.id === activeOrderId
+                    ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                }`}
+              >
+                {order.name}
+                {order.items.length > 0 && <span className="text-[10px] opacity-60">({order.items.length})</span>}
+              </button>
+            ))}
+            <Button onClick={addOrder} variant="light" size="sm"><Plus size={14} /> Nueva</Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+            {activeOrder.items.map((item) => (
+              <div key={item.product.id} className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{item.product.name}</p>
+                  <p className="text-xs text-zinc-400">{symbol}{(currency === "VES" ? item.product.price * rate : item.product.price).toFixed(2)} c/u</p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="w-8 h-8" size="sm" variant="ghost"><Minus size={14} /></Button>
+                  <span className="w-8 text-center text-sm font-semibold text-zinc-800 dark:text-zinc-100">{item.quantity}</span>
+                  <Button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8" size="sm" variant="ghost"><Plus size={14} /></Button>
+                </div>
+              </div>
+            ))}
+            {activeOrder.items.length === 0 && (
+              <div className="text-center py-12">
+                <ShoppingCart size={40} className="mx-auto mb-2 text-zinc-300 dark:text-zinc-600" />
+                <p className="text-zinc-400 dark:text-zinc-500 text-sm">Carrito vacío</p>
+                <p className="text-zinc-300 dark:text-zinc-600 text-xs">Selecciona productos para empezar</p>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400">
+                <span>Total ({currency})</span>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-100">{symbol}{totalDisplay.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {orders.length > 1 && activeOrder.items.length === 0 && (
+                <Button onClick={() => removeOrder(activeOrder.id)} variant="light" className="flex-1">Descartar</Button>
+              )}
+              <Button onClick={openPayDialog} disabled={activeOrder.items.length === 0 || submitting} variant="primary" className="flex-1 py-3 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">Cobrar</Button>
+            </div>
+          </div>
+        </aside>
+
+        {cartOpen && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setCartOpen(false)} />}
+        <div className={`fixed lg:hidden inset-y-0 right-0 z-40 w-full sm:w-96 bg-zinc-50 dark:bg-zinc-900 flex flex-col shadow-2xl border-l dark:border-zinc-800 transition-transform duration-300 ${cartOpen ? "translate-x-0" : "translate-x-full"}`}>
+          <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+              <ShoppingCart size={16} /> {activeOrder.name}
+              {itemCount > 0 && <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{itemCount}</span>}
+            </h2>
+            <button onClick={() => setCartOpen(false)} className="lg:hidden text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"><X size={18} /></button>
+          </div>
+          <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex items-center gap-2 overflow-auto">
+            {orders.map((order) => (
+              <button
+                key={order.id}
+                onClick={() => switchOrder(order.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-colors ${
+                  order.id === activeOrderId
+                    ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                }`}
+              >
+                {order.name}
+                {order.items.length > 0 && <span className="text-[10px] opacity-60">({order.items.length})</span>}
+              </button>
+            ))}
+            <Button onClick={addOrder} variant="light" size="sm"><Plus size={14} /> Nueva</Button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+            {activeOrder.items.map((item) => (
+              <div key={item.product.id} className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-indigo-500" /></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{item.product.name}</p>
+                  <p className="text-xs text-zinc-400">{symbol}{(currency === "VES" ? item.product.price * rate : item.product.price).toFixed(2)} c/u</p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="w-8 h-8" size="sm" variant="ghost"><Minus size={14} /></Button>
+                  <span className="w-8 text-center text-sm font-semibold text-zinc-800 dark:text-zinc-100">{item.quantity}</span>
+                  <Button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8" size="sm" variant="ghost"><Plus size={14} /></Button>
+                </div>
+              </div>
+            ))}
+            {activeOrder.items.length === 0 && (
+              <div className="text-center py-12">
+                <ShoppingCart size={40} className="mx-auto mb-2 text-zinc-300 dark:text-zinc-600" />
+                <p className="text-zinc-400 dark:text-zinc-500 text-sm">Carrito vacío</p>
+                <p className="text-zinc-300 dark:text-zinc-600 text-xs">Selecciona productos para empezar</p>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3">
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400">
+                <span>Total ({currency})</span>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-100">{symbol}{totalDisplay.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {orders.length > 1 && activeOrder.items.length === 0 && (
+                <Button onClick={() => removeOrder(activeOrder.id)} variant="light" className="flex-1">Descartar</Button>
+              )}
+              <Button onClick={openPayDialog} disabled={activeOrder.items.length === 0 || submitting} variant="primary" className="flex-1 py-3 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">Cobrar</Button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-      <Modal open={payDialog} onClose={() => setPayDialog(false)}>
+      <Dialog open={payDialog} onClose={() => setPayDialog(false)}>
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Cobrar {activeOrder.name}</h3>
-            <p className="text-sm text-slate-500">Combina efectivo, tarjeta o transferencia.</p>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Cobrar {activeOrder.name}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Combina efectivo, tarjeta o transferencia.</p>
           </div>
-          <button className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100" onClick={() => setPayDialog(false)}>Cerrar</button>
+          <button className="rounded-lg px-2 py-1 text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setPayDialog(false)}>Cerrar</button>
         </div>
-
-        <div className="mb-3 rounded-2xl bg-slate-50 px-4 py-3">
-          <div className="flex items-center justify-between text-sm text-slate-500">
+        <div className="mb-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
+          <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
             <span>Total en {currency}</span>
-            <span className="text-xl font-bold text-slate-900">{symbol}{totalDisplay.toFixed(2)}</span>
+            <span className="text-xl font-bold text-slate-900 dark:text-slate-100">{symbol}{totalDisplay.toFixed(2)}</span>
           </div>
           {rate > 0 && (
-            <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
+            <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 mt-1">
               <span>Tasa: 1 USD = {rate.toFixed(2)} VES</span>
             </div>
           )}
         </div>
-
         <div className="space-y-3">
           {payments.map((payment, index) => (
-            <div key={index} className="grid grid-cols-[1fr_120px_auto] items-center gap-3 rounded-2xl border border-slate-200 p-3">
-              <select className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500" value={payment.methodId} onChange={(e: any) => updatePayment(index, "methodId", parseInt(e.target.value))}>
+            <div key={index} className="grid grid-cols-[1fr_120px_auto] items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-3">
+              <select className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white" value={payment.methodId} onChange={(e: any) => updatePayment(index, "methodId", parseInt(e.target.value))}>
                 {pays.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
-              <input className="rounded-xl border border-slate-300 px-3 py-2 text-right text-sm outline-none focus:border-violet-500" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
-              <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>
+              <input className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-right text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
+              <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>
             </div>
           ))}
         </div>
-
-        <button className="mt-3 w-full rounded-xl border border-dashed border-violet-300 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50" onClick={addPaymentSplit} disabled={paymentDiff <= 0.01}>Agregar otra forma de pago</button>
-
-        <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+        <button className="mt-3 w-full rounded-xl border border-dashed border-violet-300 px-4 py-2 text-sm font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30" onClick={addPaymentSplit} disabled={paymentDiff <= 0.01}>Agregar otra forma de pago</button>
+        <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm">
           <div className="flex items-center justify-between">
-            <span className="text-slate-500">Pagado</span>
-            <span className="font-semibold text-slate-900">{symbol}{paymentsTotal.toFixed(2)}</span>
+            <span className="text-slate-500 dark:text-slate-400">Pagado</span>
+            <span className="font-semibold text-slate-900 dark:text-slate-100">{symbol}{paymentsTotal.toFixed(2)}</span>
           </div>
           <div className="mt-1 flex items-center justify-between">
-            <span className="text-slate-500">Diferencia</span>
-            <span className={`font-semibold ${Math.abs(paymentDiff) < 0.009 ? "text-emerald-600" : "text-rose-600"}`}>{Math.abs(paymentDiff) < 0.009 ? "Cuadrado" : `${symbol}${Math.abs(paymentDiff).toFixed(2)}`}</span>
+            <span className="text-slate-500 dark:text-slate-400">Diferencia</span>
+            <span className={`font-semibold ${Math.abs(paymentDiff) < 0.009 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{Math.abs(paymentDiff) < 0.009 ? "Cuadrado" : `${symbol}${Math.abs(paymentDiff).toFixed(2)}`}</span>
           </div>
         </div>
-
         <Button variant="success" size="lg" className="mt-4 w-full rounded-2xl" onClick={submitPayment} disabled={submitting || Math.abs(paymentDiff) > 0.009}>
           {submitting ? "Procesando..." : `Confirmar cobro de ${symbol}${totalDisplay.toFixed(2)}`}
         </Button>
-      </Modal>
+      </Dialog>
 
       {receiptSale && <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />}
     </>

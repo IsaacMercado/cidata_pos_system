@@ -1,7 +1,7 @@
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, like, sql, getTableColumns, name } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { products } from "../db/schema";
+import { products, exchangeRates } from "../db/schema";
 import type { Env } from "../index";
 import { validateJson, validationError } from "../lib/zvalidator";
 
@@ -36,6 +36,12 @@ const updateSchema = z.object({
   isActive: z.number().min(0).max(1).optional(),
 });
 
+interface ExchangeRate {
+  name: string;
+  rate: number;
+  fetchedAt: string;
+}
+
 app.get("/", async (c) => {
   const db = c.get("db");
   const search = c.req.query("search");
@@ -47,12 +53,43 @@ app.get("/", async (c) => {
   if (categoryId) conditions.push(eq(products.categoryId, Number(categoryId)));
   if (active !== undefined) conditions.push(eq(products.isActive, Number(active)));
 
+  const subQuery = db
+      .select({
+        id: exchangeRates.id,
+        currencyTo: exchangeRates.currencyTo,
+        rate: exchangeRates.rate,
+        fetchedAt: exchangeRates.fetchedAt,
+        rowNum: sql<number>`ROW_NUMBER() OVER (
+          PARTITION BY ${exchangeRates.currencyFrom}
+          ORDER BY ${exchangeRates.fetchedAt} DESC
+        )`.as('row_num'),
+      })
+      .from(exchangeRates)
+      .where(eq(exchangeRates.currencyFrom, 'USD'))
+      .as('er');
+
   const result = await db
-    .select()
+    .select({
+      ...getTableColumns(products),
+      rates: sql<ExchangeRate[] | null>`(
+          SELECT json_group_array(
+            json_object(
+              'id', ${subQuery.id},
+              'name', ${subQuery.currencyTo},
+              'rate', ${subQuery.rate} * ${products.price},
+              'fetchedAt', ${subQuery.fetchedAt}
+            )
+          )
+          FROM ${subQuery}
+          WHERE ${subQuery.rowNum} = 1
+        )`.mapWith(JSON.parse),
+    })
     .from(products)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(products.name)
     .all();
+
+  result.map((r) => console.log(r.rates));
 
   return c.json({ data: result });
 });

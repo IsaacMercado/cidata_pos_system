@@ -1,4 +1,4 @@
-import { addRxPlugin, createRxDatabase, removeRxDatabase, type RxDatabase, type RxJsonSchema } from "rxdb";
+import { addRxPlugin, createRxDatabase, removeRxDatabase, type RxDatabase, type RxJsonSchema, type RxCollection } from "rxdb";
 import { RxDBDevModePlugin } from "rxdb/plugins/dev-mode";
 import { RxDBLeaderElectionPlugin } from "rxdb/plugins/leader-election";
 import { RxDBMigrationSchemaPlugin } from "rxdb/plugins/migration-schema";

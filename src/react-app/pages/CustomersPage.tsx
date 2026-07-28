@@ -1,9 +1,9 @@
-import { useState, useEffect } from "preact/hooks";
+import { Trash2, UserPlus, Users } from "lucide-react";
+import { useEffect, useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
-import { api } from "../lib/api";
 import { useToast } from "../components/pos/Toast";
-import { Users, UserPlus, Trash2 } from "lucide-react";
-import { Button, Input, Loading, Modal, PageHeader, Table } from "../components/ui";
+import { Badge, Button, Card, CardContent, CardFooter, CardHeader, CardTitle, Dialog, Input, Loading, PageHeader, Table } from "../components/ui";
+import { api } from "../lib/api";
 
 interface FormData {
   name: string;
@@ -74,65 +74,71 @@ export function CustomersPage() {
         }
       />
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.Header>Nombre</Table.Header>
-            <Table.Header className="hidden sm:table-cell">Email</Table.Header>
-            <Table.Header className="hidden sm:table-cell">Teléfono</Table.Header>
-            <Table.Header className="hidden md:table-cell">Registro</Table.Header>
-            <Table.Header>Acciones</Table.Header>
-          </Table.Row>
-        </Table.Head>
-        <Table.Body>
-          {customers.filter((c: any) => c.isActive !== 0).map((c: any) => (
-            <Table.Row key={c.id}>
-              <Table.Cell className="font-medium text-zinc-800">
-                <div className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-50 to-violet-100 flex items-center justify-center flex-shrink-0">
-                    <Users size={14} className="text-violet-500" />
-                  </span>
-                  {c.name}
-                </div>
-              </Table.Cell>
-              <Table.Cell className="text-zinc-500 text-sm hidden sm:table-cell">
-                {c.email || <span className="text-zinc-300">—</span>}
-              </Table.Cell>
-              <Table.Cell className="text-zinc-500 text-sm hidden sm:table-cell">
-                {c.phone || <span className="text-zinc-300">—</span>}
-              </Table.Cell>
-              <Table.Cell className="text-xs text-zinc-400 hidden md:table-cell">
-                {new Date(c.createdAt).toLocaleDateString()}
-              </Table.Cell>
-              <Table.Cell>
-                <button onClick={() => remove(c.id)} className="text-xs text-red-400 hover:text-red-600 transition-colors flex items-center gap-1">
-                  <Trash2 size={12} />
-                  Eliminar
-                </button>
-              </Table.Cell>
+      <Card>
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.Header>Nombre</Table.Header>
+              <Table.Header className="hidden sm:table-cell">Email</Table.Header>
+              <Table.Header className="hidden sm:table-cell">Teléfono</Table.Header>
+              <Table.Header className="hidden md:table-cell">Registro</Table.Header>
+              <Table.Header>Acciones</Table.Header>
             </Table.Row>
-          ))}
-          {customers.length === 0 && <Table.Empty colSpan={5}>No hay clientes registrados</Table.Empty>}
-        </Table.Body>
-      </Table>
+          </Table.Head>
+          <Table.Body>
+            {customers.filter((c: any) => c.isActive !== 0).map((c: any) => (
+              <Table.Row key={c.id}>
+                <Table.Cell className="font-medium text-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0">
+                      <Users size={14} className="text-violet-500" />
+                    </span>
+                    {c.name}
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="text-zinc-500 text-sm hidden sm:table-cell">
+                  {c.email || <Badge variant="secondary" size="sm">—</Badge>}
+                </Table.Cell>
+                <Table.Cell className="text-zinc-500 text-sm hidden sm:table-cell">
+                  {c.phone || <Badge variant="secondary" size="sm">—</Badge>}
+                </Table.Cell>
+                <Table.Cell className="text-xs text-zinc-400 hidden md:table-cell">
+                  {new Date(c.createdAt).toLocaleDateString()}
+                </Table.Cell>
+                <Table.Cell>
+                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => remove(c.id)}>
+                    <Trash2 size={12} /> Eliminar
+                  </Button>
+                </Table.Cell>
+              </Table.Row>
+            ))}
+            {customers.length === 0 && <Table.Empty colSpan={5}>No hay clientes registrados</Table.Empty>}
+          </Table.Body>
+        </Table>
+      </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} size="sm">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <h2 className="text-lg font-bold">Nuevo Cliente</h2>
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} size="sm">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+          <CardHeader>
+            <CardTitle>Nuevo Cliente</CardTitle>
+            <Button variant="ghost" size="icon" onClick={() => setModalOpen(false)} aria-label="Cerrar">✕</Button>
+          </CardHeader>
 
-          <Input label="Nombre" {...register("name", { required: true })} />
+          <CardContent className="space-y-4 pt-0">
+            <Input label="Nombre" {...register("name", { required: true })} />
 
-          <div className="flex gap-3">
-            <Input label="Email" type="email" className="flex-1" {...register("email")} />
-            <Input label="Teléfono" className="flex-1" {...register("phone")} />
-          </div>
+            <div className="flex gap-3">
+              <Input label="Email" type="email" className="flex-1" {...register("email")} />
+              <Input label="Teléfono" className="flex-1" {...register("phone")} />
+            </div>
+          </CardContent>
 
-          <div className="flex gap-2 justify-end pt-2">
+          <CardFooter className="justify-end">
             <Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button type="submit">Guardar</Button>
-          </div>
+          </CardFooter>
         </form>
-      </Modal>
+      </Dialog>
     </div>
   );
 }

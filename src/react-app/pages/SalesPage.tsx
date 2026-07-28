@@ -2,7 +2,7 @@ import { Banknote, Building, CreditCard, Receipt, Smartphone } from "lucide-reac
 import { useEffect, useState } from "preact/hooks";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
-import { Badge, Button, Loading, Modal, PageHeader, Table } from "../components/ui";
+import { Badge, Button, Card, CardTitle, Dialog, Loading, PageHeader, Table } from "../components/ui";
 import { api } from "../lib/api";
 import type { SaleWithItems } from "../lib/types";
 
@@ -63,55 +63,59 @@ export function SalesPage() {
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <PageHeader title="Historial de Ventas" icon={Receipt} />
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.Header>Recibo</Table.Header>
-            <Table.Header>Fecha</Table.Header>
-            <Table.Header className="hidden sm:table-cell">Productos</Table.Header>
-            <Table.Header className="text-right">Total</Table.Header>
-            <Table.Header>Estado</Table.Header>
-            <Table.Header>Acciones</Table.Header>
-          </Table.Row>
-        </Table.Head>
-        <Table.Body>
-          {sales.map((sale) => (
-            <Table.Row key={sale.id} className={`cursor-pointer ${detailId === sale.id ? "bg-indigo-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
-              <Table.Cell className="font-medium text-zinc-800">{sale.receiptNumber}</Table.Cell>
-              <Table.Cell className="text-xs text-zinc-500 whitespace-nowrap">
-                {new Date(sale.createdAt).toLocaleDateString()}{" "}
-                <span className="text-zinc-300">
-                  {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </Table.Cell>
-              <Table.Cell className="text-zinc-500 hidden sm:table-cell">{sale.items?.length ?? 0} artículos</Table.Cell>
-              <Table.Cell className="text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</Table.Cell>
-              <Table.Cell>
-                <Badge variant={sale.status === "completed" ? "success" : sale.status === "cancelled" ? "danger" : "warning"}>
-                  {sale.status === "completed" ? "Completada" : sale.status === "cancelled" ? "Cancelada" : sale.status}
-                </Badge>
-              </Table.Cell>
-              <Table.Cell>
-                {(sale.status === "completed" || sale.status === "in_progress") && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
-                    className="text-xs text-red-400 hover:text-red-600 transition-colors"
-                  >
-                    {sale.status === "in_progress" ? "Cancelar orden" : "Cancelar"}
-                  </button>
-                )}
-              </Table.Cell>
+      <Card>
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.Header>Recibo</Table.Header>
+              <Table.Header>Fecha</Table.Header>
+              <Table.Header className="hidden sm:table-cell">Productos</Table.Header>
+              <Table.Header className="text-right">Total</Table.Header>
+              <Table.Header>Estado</Table.Header>
+              <Table.Header>Acciones</Table.Header>
             </Table.Row>
-          ))}
-          {sales.length === 0 && <Table.Empty colSpan={6}>No hay ventas registradas</Table.Empty>}
-        </Table.Body>
-      </Table>
+          </Table.Head>
+          <Table.Body>
+            {sales.map((sale) => (
+              <Table.Row key={sale.id} className={`cursor-pointer ${detailId === sale.id ? "bg-primary-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
+                <Table.Cell className="font-medium text-zinc-800">{sale.receiptNumber}</Table.Cell>
+                <Table.Cell className="text-xs text-zinc-500 whitespace-nowrap">
+                  {new Date(sale.createdAt).toLocaleDateString()}{" "}
+                  <span className="text-zinc-300">
+                    {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </Table.Cell>
+                <Table.Cell className="text-zinc-500 hidden sm:table-cell">{sale.items?.length ?? 0} artículos</Table.Cell>
+                <Table.Cell className="text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</Table.Cell>
+                <Table.Cell>
+                  <Badge variant={sale.status === "completed" ? "success" : sale.status === "cancelled" ? "danger" : "warning"}>
+                    {sale.status === "completed" ? "Completada" : sale.status === "cancelled" ? "Cancelada" : sale.status}
+                  </Badge>
+                </Table.Cell>
+                <Table.Cell>
+                  {(sale.status === "completed" || sale.status === "in_progress") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={(e) => { e.stopPropagation(); cancelSale(sale.id); }}
+                    >
+                      {sale.status === "in_progress" ? "Cancelar orden" : "Cancelar"}
+                    </Button>
+                  )}
+                </Table.Cell>
+              </Table.Row>
+            ))}
+            {sales.length === 0 && <Table.Empty colSpan={6}>No hay ventas registradas</Table.Empty>}
+          </Table.Body>
+        </Table>
+      </Card>
 
-      <Modal open={!!detail} onClose={() => { setDetail(null); setDetailId(null); }} size="lg" className="max-w-lg p-0">
+      <Dialog open={!!detail} onClose={() => { setDetail(null); setDetailId(null); }} size="lg" className="max-w-lg p-0">
         {detail && (
           <div className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-zinc-800">Detalle de Venta</h2>
+              <CardTitle>Detalle de Venta</CardTitle>
               <Badge variant={detail.status === "completed" ? "success" : "danger"}>
                 {detail.status === "completed" ? "Completada" : "Cancelada"}
               </Badge>
@@ -181,7 +185,7 @@ export function SalesPage() {
             </div>
           </div>
         )}
-      </Modal>
+      </Dialog>
 
       {receiptSale && <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />}
     </div>

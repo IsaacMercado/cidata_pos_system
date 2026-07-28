@@ -1,7 +1,7 @@
+import { Edit, Shield, ShieldOff, Trash2, UserCheck, UserPlus } from "lucide-react";
 import { useEffect, useState } from "preact/hooks";
+import { Badge, Button, Card, CardFooter, CardTitle, Dialog, Input, PageHeader, Select, SkeletonTable, Table } from "../components/ui";
 import { api } from "../lib/api";
-import { Button, Input, Modal, Select } from "../components/ui";
-import { Shield, ShieldOff, UserPlus } from "lucide-react";
 
 const ALL_SCREENS = [
   { value: "pos", label: "POS" },
@@ -30,7 +30,7 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
-  const [editPerms, setEditPerms] = useState<User | null>(null);
+  const [editPermsUser, setEditPermsUser] = useState<User | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -73,92 +73,98 @@ export function AdminPage() {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Administración de Usuarios</h1>
-          <p className="text-sm text-slate-400 mt-1">Gestiona usuarios y sus accesos al sistema</p>
-        </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <UserPlus size={16} /> Nuevo Usuario
-        </Button>
-      </div>
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <PageHeader
+        title="Administración de Usuarios"
+        icon={Shield}
+        description="Gestiona usuarios y sus accesos al sistema"
+        action={
+          <Button onClick={() => setShowCreate(true)}>
+            <UserPlus size={16} /> Nuevo Usuario
+          </Button>
+        }
+      />
 
-      <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-800 bg-slate-900/50">
-              <th className="px-4 py-3 text-left text-slate-400 font-medium">Usuario</th>
-              <th className="px-4 py-3 text-left text-slate-400 font-medium">Email</th>
-              <th className="px-4 py-3 text-left text-slate-400 font-medium">Rol</th>
-              <th className="px-4 py-3 text-center text-slate-400 font-medium">Superuser</th>
-              <th className="px-4 py-3 text-center text-slate-400 font-medium">Activo</th>
-              <th className="px-4 py-3 text-center text-slate-400 font-medium">Pantallas</th>
-              <th className="px-4 py-3 text-right text-slate-400 font-medium">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
+      <Card>
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.Header>Usuario</Table.Header>
+              <Table.Header className="hidden sm:table-cell">Email</Table.Header>
+              <Table.Header className="hidden md:table-cell">Rol</Table.Header>
+              <Table.Header className="text-center">Superuser</Table.Header>
+              <Table.Header className="text-center">Activo</Table.Header>
+              <Table.Header className="text-center">Pantallas</Table.Header>
+              <Table.Header className="text-right">Acciones</Table.Header>
+            </Table.Row>
+          </Table.Head>
+          <Table.Body>
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Cargando...</td></tr>
+              <SkeletonTable rows={5} cols={7} />
             ) : users.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No hay usuarios</td></tr>
+              <Table.Empty colSpan={7}>No hay usuarios registrados</Table.Empty>
             ) : users.map((u) => (
-              <tr key={u.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
-                <td className="px-4 py-3">
-                  <div className="font-medium text-white">{u.name}</div>
-                  <div className="text-xs text-slate-500">@{u.username}</div>
-                </td>
-                <td className="px-4 py-3 text-slate-300">{u.email}</td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs text-slate-300">
-                    {u.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-center">
+              <Table.Row key={u.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                <Table.Cell className="font-medium text-neutral-900 dark:text-neutral-100">
+                  <div className="flex items-center gap-2">
+                    <span className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
+                      <UserCheck size={16} className="text-primary-600 dark:text-primary-400" />
+                    </span>
+                    <div>
+                      <div>{u.name}</div>
+                      <div className="text-xs text-neutral-500 dark:text-neutral-400">@{u.username}</div>
+                    </div>
+                  </div>
+                </Table.Cell>
+                <Table.Cell className="text-neutral-500 text-sm hidden sm:table-cell">{u.email}</Table.Cell>
+                <Table.Cell className="hidden md:table-cell">
+                  <Badge variant="secondary">{u.role}</Badge>
+                </Table.Cell>
+                <Table.Cell className="text-center">
                   <button
                     onClick={() => handleToggleSuperuser(u)}
-                    className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
                       u.is_superuser
-                        ? "bg-amber-500/20 text-amber-400"
-                        : "bg-slate-800 text-slate-500"
+                        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                        : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
                     }`}
                   >
                     {u.is_superuser ? <Shield size={12} /> : <ShieldOff size={12} />}
                     {u.is_superuser ? "Sí" : "No"}
                   </button>
-                </td>
-                <td className="px-4 py-3 text-center">
+                </Table.Cell>
+                <Table.Cell className="text-center">
                   <button
                     onClick={() => handleToggleActive(u)}
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${
                       u.is_active
-                        ? "bg-green-500/20 text-green-400"
-                        : "bg-red-500/20 text-red-400"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                     }`}
                   >
                     {u.is_active ? "Activo" : "Inactivo"}
                   </button>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <Button size="sm" variant="ghost" onClick={() => { setEditPerms(u); setEditPerms(u); }}>
+                </Table.Cell>
+                <Table.Cell className="text-center">
+                  <Button size="sm" variant="ghost" onClick={() => { setEditPermsUser(u); setEditPermsUser(u); }}>
                     {(permissionsMap[u.id]?.length || 0)} pantallas
                   </Button>
-                </td>
-                <td className="px-4 py-3 text-right">
+                </Table.Cell>
+                <Table.Cell className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => setEditUser(u)}>
-                      Editar
+                    <Button size="sm" variant="ghost" onClick={() => setEditUser(u)} aria-label={`Editar ${u.username}`}>
+                      <Edit size={14} />
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-red-400" onClick={() => handleDelete(u)}>
-                      Desactivar
+                    <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(u)} aria-label={`Eliminar ${u.username}`}>
+                      <Trash2 size={14} />
                     </Button>
                   </div>
-                </td>
-              </tr>
+                </Table.Cell>
+              </Table.Row>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </Table.Body>
+        </Table>
+      </Card>
 
       {showCreate && (
         <CreateUserModal
@@ -175,12 +181,12 @@ export function AdminPage() {
         />
       )}
 
-      {editPerms && (
+      {editPermsUser && (
         <PermissionsModal
-          user={editPerms}
-          currentScreens={permissionsMap[editPerms.id] || []}
-          onClose={() => setEditPerms(null)}
-          onUpdated={() => { setEditPerms(null); loadData(); }}
+          user={editPermsUser}
+          currentScreens={permissionsMap[editPermsUser.id] || []}
+          onClose={() => setEditPermsUser(null)}
+          onUpdated={() => { setEditPermsUser(null); loadData(); }}
         />
       )}
     </div>
@@ -207,26 +213,35 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
   };
 
   return (
-    <Modal open onClose={onClose} className="bg-slate-900 border-slate-700">
-      <div className="w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Nuevo Usuario</h2>
-        <form onSubmit={handleSubmit} class="flex flex-col gap-4">
-          <Input placeholder="Username" value={form.username} onInput={(e: any) => setForm({ ...form, username: e.target.value })} required />
-          <Input placeholder="Nombre completo" value={form.name} onInput={(e: any) => setForm({ ...form, name: e.target.value })} required />
-          <Input type="email" placeholder="Email" value={form.email} onInput={(e: any) => setForm({ ...form, email: e.target.value })} required />
-          <Input type="password" placeholder="Contraseña" value={form.password} onInput={(e: any) => setForm({ ...form, password: e.target.value })} required />
-          <Select value={form.role} onChange={(e: any) => setForm({ ...form, role: e.target.value })}>
-            <option value="cashier">Cajero</option>
-            <option value="admin">Admin</option>
-          </Select>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          <div className="flex gap-2 justify-end">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={loading}>{loading ? "..." : "Crear Usuario"}</Button>
-          </div>
-        </form>
-      </div>
-    </Modal>
+    <Dialog open onClose={onClose} size="md">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <div className="flex items-center justify-between mb-4">
+          <CardTitle>Nuevo Usuario</CardTitle>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">✕</Button>
+        </div>
+
+        <Input label="Username" value={form.username} onInput={(e) => setForm({ ...form, username: e.target.value })} required />
+        <Input label="Nombre completo" value={form.name} onInput={(e) => setForm({ ...form, name: e.target.value })} required />
+        <Input label="Email" type="email" value={form.email} onInput={(e) => setForm({ ...form, email: e.target.value })} required />
+        <Input label="Contraseña" type="password" value={form.password} onInput={(e) => setForm({ ...form, password: e.target.value })} required />
+        <Select
+          label="Rol"
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          options={[
+            { value: "cashier", label: "Cajero" },
+            { value: "admin", label: "Admin" },
+          ]}
+        />
+
+        {error && <div className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</div>}
+
+        <CardFooter className="justify-end">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" disabled={loading}>{loading ? "Creando..." : "Crear Usuario"}</Button>
+        </CardFooter>
+      </form>
+    </Dialog>
   );
 }
 
@@ -250,24 +265,33 @@ function EditUserModal({ user, onClose, onUpdated }: { user: User; onClose: () =
   };
 
   return (
-    <Modal open onClose={onClose} className="bg-slate-900 border-slate-700">
-      <div className="w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Editar Usuario: {user.username}</h2>
-        <form onSubmit={handleSubmit} class="flex flex-col gap-4">
-          <Input placeholder="Nombre completo" value={form.name} onInput={(e: any) => setForm({ ...form, name: e.target.value })} required />
-          <Input type="email" placeholder="Email" value={form.email} onInput={(e: any) => setForm({ ...form, email: e.target.value })} required />
-          <Select value={form.role} onChange={(e: any) => setForm({ ...form, role: e.target.value })}>
-            <option value="cashier">Cajero</option>
-            <option value="admin">Admin</option>
-          </Select>
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          <div className="flex gap-2 justify-end">
-            <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={loading}>{loading ? "..." : "Guardar"}</Button>
-          </div>
-        </form>
-      </div>
-    </Modal>
+    <Dialog open onClose={onClose} size="md">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <div className="flex items-center justify-between mb-4">
+          <CardTitle>Editar Usuario: {user.username}</CardTitle>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">✕</Button>
+        </div>
+
+        <Input label="Nombre completo" value={form.name} onInput={(e) => setForm({ ...form, name: e.target.value })} required />
+        <Input label="Email" type="email" value={form.email} onInput={(e) => setForm({ ...form, email: e.target.value })} required />
+        <Select
+          label="Rol"
+          value={form.role}
+          onChange={(e) => setForm({ ...form, role: e.target.value })}
+          options={[
+            { value: "cashier", label: "Cajero" },
+            { value: "admin", label: "Admin" },
+          ]}
+        />
+
+        {error && <div className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</div>}
+
+        <CardFooter className="justify-end">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" disabled={loading}>{loading ? "Guardando..." : "Guardar"}</Button>
+        </CardFooter>
+      </form>
+    </Dialog>
   );
 }
 
@@ -276,9 +300,7 @@ function PermissionsModal({ user, currentScreens, onClose, onUpdated }: { user: 
   const [loading, setLoading] = useState(false);
 
   const toggleScreen = (screen: string) => {
-    setSelected((prev) =>
-      prev.includes(screen) ? prev.filter((s) => s !== screen) : [...prev, screen]
-    );
+    setSelected((prev) => prev.includes(screen) ? prev.filter((s) => s !== screen) : [...prev, screen]);
   };
 
   const handleSave = async () => {
@@ -291,40 +313,41 @@ function PermissionsModal({ user, currentScreens, onClose, onUpdated }: { user: 
   };
 
   return (
-    <Modal open onClose={onClose} className="bg-slate-900 border-slate-700">
-      <div className="w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-white mb-1">Permisos de Pantalla</h2>
-        <p className="text-sm text-slate-400 mb-4">@{user.username} — {user.name}</p>
+    <Dialog open onClose={onClose} size="md">
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <CardTitle>Permisos de Pantalla</CardTitle>
+            <CardDescription>@{user.username} — {user.name}</CardDescription>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Cerrar">✕</Button>
+        </div>
 
         {user.is_superuser ? (
-          <p className="text-sm text-amber-400 mb-4">
+          <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 p-3 rounded-lg">
             Este usuario es superuser y tiene acceso a todas las pantallas.
-          </p>
+          </div>
         ) : (
-          <div className="space-y-2 mb-4">
+          <div className="space-y-2">
             {ALL_SCREENS.map((screen) => (
-              <label key={screen.value} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-800/50 cursor-pointer hover:bg-slate-800">
+              <label key={screen.value} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-neutral-50 dark:bg-neutral-800/50 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800">
                 <input
                   type="checkbox"
                   checked={selected.includes(screen.value)}
                   onChange={() => toggleScreen(screen.value)}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-violet-600"
+                  className="w-4 h-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
                 />
-                <span className="text-sm text-white">{screen.label}</span>
+                <span className="text-sm text-neutral-700 dark:text-neutral-300">{screen.label}</span>
               </label>
             ))}
           </div>
         )}
 
-        <div className="flex gap-2 justify-end">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          {!user.is_superuser && (
-            <Button onClick={handleSave} disabled={loading}>
-              {loading ? "..." : "Guardar Permisos"}
-            </Button>
-          )}
-        </div>
+        <CardFooter className="justify-end pt-4">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          {!user.is_superuser && <Button onClick={handleSave} disabled={loading}>{loading ? "..." : "Guardar Permisos"}</Button>}
+        </CardFooter>
       </div>
-    </Modal>
+    </Dialog>
   );
 }

@@ -1,12 +1,11 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
-import { useRxCollection } from 'rxdb/plugins/react';
 import { useLocation } from "wouter-preact";
-import { Button, Input } from "../components/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "../components/ui";
 import { api } from "../lib/api";
-import { type OperatorDoc } from "../lib/database";
+import { getDatabase } from "../lib/database";
 import { verifyPin } from "../lib/pin";
-
+import { loadSession } from "../lib/session";
 
 interface EmailForm {
   email: string;
@@ -32,14 +31,16 @@ export interface LoginResult {
   offline?: boolean;
 }
 
-export function LoginPage({ onLogin }: {
-  onLogin: (result: LoginResult) => Promise<void>;
-}) {
-  const collection = useRxCollection<OperatorDoc>('operators');
+export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promise<void> }) {
   const [tab, setTab] = useState<"email" | "pin">("pin");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const session = loadSession();
+    if (session) navigate("/");
+  }, [navigate]);
 
   const emailForm = useForm<EmailForm>({ defaultValues: { email: "", password: "" } });
   const pinForm = useForm<PinForm>({ defaultValues: { username: "", pin: "" } });
@@ -66,7 +67,6 @@ export function LoginPage({ onLogin }: {
     setError("");
     setLoading(true);
     try {
-      // Try online first (works on any network client: Android, PC script, browser).
       const data = await api.auth.loginPin({ username, pin });
       await onLogin({
         user: { ...data.user, is_superuser: data.user.isSuperuser ?? data.user.is_superuser ?? 0 },
@@ -76,7 +76,6 @@ export function LoginPage({ onLogin }: {
       navigate("/");
       return;
     } catch (err) {
-      // Network failure → attempt offline PIN verification against cached operators.
       const isNetworkError =
         err instanceof TypeError ||
         (err instanceof Error && /Failed to fetch|network/i.test(err.message));
@@ -87,12 +86,8 @@ export function LoginPage({ onLogin }: {
     }
 
     try {
-      if (!collection) {
-        setError("No se pudo acceder a la base de datos local.");
-        return;
-      };
-
-      const op = await collection.findOne({ selector: { username } }).exec();
+      const db = await getDatabase();
+      const op = await db.operators.findOne({ selector: { username } }).exec();
       if (!op) {
         setError("Sin conexión y operador no sincronizado. Conéctate a internet.");
         return;
@@ -127,77 +122,89 @@ export function LoginPage({ onLogin }: {
   };
 
   return (
-    <div class="flex min-h-dvh items-center justify-center bg-slate-950 px-4">
-      <div class="w-full max-w-sm">
-        <div class="mb-8 text-center">
-          <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500 text-2xl font-bold text-white">
+    <div className="flex min-h-dvh items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center pb-6">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-600 text-2xl font-bold text-white">
             P
           </div>
-          <h1 class="text-2xl font-bold text-white">Punto de Venta</h1>
-          <p class="mt-1 text-sm text-slate-400">Inicia sesión para continuar</p>
-        </div>
+          <CardTitle className="text-2xl font-bold">Punto de Venta</CardTitle>
+          <CardDescription>Inicia sesión para continuar</CardDescription>
+        </CardHeader>
 
-        <div class="mb-4 flex rounded-lg bg-slate-800 p-1 text-sm">
-          <button
-            type="button"
-            onClick={() => setTab("pin")}
-            class={`flex-1 rounded-md py-1.5 font-medium ${tab === "pin" ? "bg-violet-600 text-white" : "text-slate-400"}`}
-          >
-            Operador (PIN)
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("email")}
-            class={`flex-1 rounded-md py-1.5 font-medium ${tab === "email" ? "bg-violet-600 text-white" : "text-slate-400"}`}
-          >
-            Admin (Email)
-          </button>
-        </div>
+        <CardContent className="space-y-4">
+          <div className="flex rounded-lg bg-neutral-100 dark:bg-neutral-800 p-1 text-sm" role="tablist" aria-label="Método de inicio de sesión">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "pin"}
+              onClick={() => setTab("pin")}
+              className={`flex-1 rounded-md py-1.5 font-medium transition-colors ${
+                tab === "pin" ? "bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm" : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+              }`}
+            >
+              Operador (PIN)
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "email"}
+              onClick={() => setTab("email")}
+              className={`flex-1 rounded-md py-1.5 font-medium transition-colors ${
+                tab === "email" ? "bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm" : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+              }`}
+            >
+              Admin (Email)
+            </button>
+          </div>
 
-        {tab === "email" ? (
-          <form onSubmit={emailForm.handleSubmit(submitEmail)} class="flex flex-col gap-4">
-            <Input
-              type="email"
-              placeholder="Email"
-              autoFocus
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...emailForm.register("email", { required: true })}
-            />
-            <Input
-              type="password"
-              placeholder="Contraseña"
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...emailForm.register("password", { required: true })}
-            />
-            {error && <p class="text-sm text-red-400">{error}</p>}
-            <Button type="submit" disabled={loading} className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium hover:bg-violet-500">
-              {loading ? "Entrando..." : "Iniciar Sesión"}
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={pinForm.handleSubmit(submitPin)} class="flex flex-col gap-4">
-            <Input
-              placeholder="Usuario"
-              autoFocus
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...pinForm.register("username", { required: true })}
-            />
-            <Input
-              type="password"
-              placeholder="PIN"
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...pinForm.register("pin", { required: true })}
-            />
-            {error && <p class="text-sm text-red-400">{error}</p>}
-            <Button type="submit" disabled={loading} className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium hover:bg-violet-500">
-              {loading ? "Entrando..." : "Abrir Turno"}
-            </Button>
-            <p class="text-center text-xs text-slate-500">
-              Funciona sin internet si ya iniciaste sesión antes.
-            </p>
-          </form>
-        )}
-      </div>
+          {tab === "email" ? (
+            <form onSubmit={emailForm.handleSubmit(submitEmail)} className="space-y-4">
+              <Input
+                label="Email"
+                type="email"
+                placeholder="Email"
+                autoFocus
+                error={error}
+                {...emailForm.register("email", { required: true })}
+              />
+              <Input
+                label="Contraseña"
+                type="password"
+                placeholder="Contraseña"
+                error={error}
+                {...emailForm.register("password", { required: true })}
+              />
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? "Entrando..." : "Iniciar Sesión"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={pinForm.handleSubmit(submitPin)} className="space-y-4">
+              <Input
+                label="Usuario"
+                placeholder="Usuario"
+                autoFocus
+                error={error}
+                {...pinForm.register("username", { required: true })}
+              />
+              <Input
+                label="PIN"
+                type="password"
+                placeholder="PIN"
+                error={error}
+                {...pinForm.register("pin", { required: true })}
+              />
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading ? "Entrando..." : "Abrir Turno"}
+              </Button>
+              <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
+                Funciona sin internet si ya iniciaste sesión antes.
+              </p>
+            </form>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

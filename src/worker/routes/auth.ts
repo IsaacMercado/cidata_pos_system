@@ -14,7 +14,11 @@ async function requireSuperuser(c: any, next: any) {
 
   const db = c.get("db");
   const user = await db
-    .select({ id: users.id, isSuperuser: users.isSuperuser, isActive: users.isActive })
+    .select({
+      id: users.id,
+      isSuperuser: users.isSuperuser,
+      isActive: users.isActive,
+    })
     .from(users)
     .where(eq(users.username, payload.sub as string))
     .get();
@@ -346,12 +350,16 @@ auth.put("/users/permissions/:userId", requireSuperuser, async (c) => {
   const userId = parseInt(c.req.param("userId"), 10);
   const { screens } = await c.req.json<{ screens: string[] }>();
 
-  await db.delete(userPermissions).where(eq(userPermissions.userId, userId)).run();
+  await db
+    .delete(userPermissions)
+    .where(eq(userPermissions.userId, userId))
+    .run();
 
   if (screens && screens.length > 0) {
     await db
       .insert(userPermissions)
-      .values(screens.map((screen) => ({ userId, screen }))).run();
+      .values(screens.map((screen) => ({ userId, screen })))
+      .run();
   }
 
   return c.json({ success: true, screens });

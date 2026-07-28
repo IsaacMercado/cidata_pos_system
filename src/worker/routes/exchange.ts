@@ -1,4 +1,4 @@
-import { eq, sql, getTableColumns } from "drizzle-orm";
+import { eq, getTableColumns, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { exchangeRates } from "../db/schema";
 import type { Env } from "../index";
@@ -6,6 +6,14 @@ import type { Env } from "../index";
 const app = new Hono<Env>();
 
 app.get("/", async (c) => {
+  const db = c.get("db");
+  const rates = await db
+    .select()
+    .from(exchangeRates);
+  return c.json({ data: rates });
+});
+
+app.get("/current", async (c) => {
   const db = c.get("db");
 
   const subquery = db
