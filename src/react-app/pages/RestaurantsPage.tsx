@@ -2,7 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { RxDatabase } from "rxdb";
 import { RxDatabaseProvider, useRxCollection } from 'rxdb/plugins/react';
 import { useLocation, useRoute } from "wouter-preact";
-import { PaymentDialog } from "../components/pos/PaymentDialog";
+import { SimplePaymentDialog as PaymentDialog } from "../components/pos/SimplePaymentDialog";
 import { TableMap } from "../components/pos/TableMap";
 import { TableOrderPanel } from "../components/pos/TableOrderPanel";
 import { TablePicker } from "../components/pos/TablePicker";

@@ -8,7 +8,8 @@ export interface LocalSession {
     username: string;
     name: string;
     role: string;
-    is_superuser: number;
+    permissions: string[];
+    isSuperuser: number;
   };
   token: string | null;
   offline: boolean;

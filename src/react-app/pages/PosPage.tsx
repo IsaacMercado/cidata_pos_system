@@ -1,71 +1,51 @@
-import {
-    Coffee,
-    Milk,
-    Package,
-    Popcorn,
-    Sandwich,
-    Search,
-    ShoppingCart,
-    Sparkles,
-    X,
-} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { RxDatabase } from "rxdb";
-import { RxDatabaseProvider, useLiveRxQuery } from 'rxdb/plugins/react';
+import { RxDatabaseProvider, useLiveRxQuery } from "rxdb/plugins/react";
+
 import { CartAside } from "../components/pos/CartAside";
+import { MobileCartButton } from "../components/pos/MobileCartButton";
+import { PaymentDialog } from "../components/pos/PaymentDialog";
+import { PosToolbar } from "../components/pos/PosToolbar";
+import { ProductGrid } from "../components/pos/ProductGrid";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
-import { Button, Dialog, Loading } from "../components/ui";
-import { api } from "../lib/api";
-import { getDatabase, type ProductDoc, type RxCollections } from "../lib/database";
-import { PAYMENT_METHODS } from "../lib/paymentMethods";
-import type { CartItem, ProductWithCategory, SaleWithItems } from "../lib/types";
-import { useKeyboardShortcuts, type ShortcutConfig } from "../lib/useKeyboardShortcuts";
-import { useOnlineStatus } from "../lib/useOnlineStatus";
+import { Loading } from "../components/ui";
 
+import { useCurrency } from "../hooks/useCurrency";
+import { useOrders } from "../hooks/useOrders";
+import { usePayment } from "../hooks/usePayment";
 
-interface Order {
-  id: number;
-  name: string;
-  items: CartItem[];
-  createdAt: Date;
-}
+import {
+  getDatabase,
+  type ProductDoc,
+  type RxCollections,
+} from "../lib/database";
+import type { ProductWithCategory } from "../lib/types";
+import {
+  useKeyboardShortcuts,
+  type ShortcutConfig,
+} from "../lib/useKeyboardShortcuts";
 
-const CURRENCIES = [
-  { code: "USD", label: "$ USD", symbol: "$" },
-  { code: "VES", label: "Bs. VES", symbol: "Bs." },
-];
-
-const CATEGORY_ICONS: Record<string, typeof Coffee> = {
-  Bebidas: Coffee,
-  Alimentos: Sandwich,
-  Snacks: Popcorn,
-  Lácteos: Milk,
-  Limpieza: Sparkles,
-};
-
-function CategoryIcon({ name }: { name: string }) {
-  const Icon = CATEGORY_ICONS[name];
-  if (!Icon) return <Package size={20} className="text-indigo-500" />;
-  return <Icon size={20} className="text-indigo-500" />;
-}
-
-interface Order {
-  id: number;
-  name: string;
-  items: CartItem[];
-  createdAt: Date;
-}
+// ─── Entrypoint ───────────────────────────────────────────────────────────────
 
 export function PosPage() {
   const [db, setDb] = useState<RxDatabase<RxCollections> | null>(null);
   const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
-    getDatabase().then(setDb).catch((e) => setDbError(e?.message || "Error al iniciar DB"));
+    getDatabase()
+      .then(setDb)
+      .catch((e) => setDbError(e?.message || "Error al iniciar DB"));
   }, []);
 
-  if (dbError) return <div className="flex h-dvh items-center justify-center p-4 text-center"><p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">{dbError}</p></div>;
+  if (dbError)
+    return (
+      <div className="flex h-dvh items-center justify-center p-4 text-center">
+        <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
+          {dbError}
+        </p>
+      </div>
+    );
   if (!db) return <Loading spinner text="Cargando catálogo..." />;
 
   return (
@@ -75,423 +55,246 @@ export function PosPage() {
   );
 }
 
+// ─── Main content ────────────────────────────────────────────────────────────
+
 function PosPageContent() {
-  const orderIdCounter = useRef(0);
-
-  function createOrder(name?: string): Order {
-    orderIdCounter.current += 1;
-    return { id: orderIdCounter.current, name: name || `Orden ${orderIdCounter.current}`, items: [], createdAt: new Date() };
-  }
-
-  const [orders, setOrders] = useState<Order[]>([createOrder("Orden 1")]);
-  const [activeOrderId, setActiveOrderId] = useState<number>(1);
-  const [search, setSearch] = useState("");
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const [selectedCategory, setSelectedCategory] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [receiptSale, setReceiptSale] = useState<SaleWithItems | null>(null);
-  const [payDialog, setPayDialog] = useState(false);
-  const [payments, setPayments] = useState<{ methodId: number; amount: string }[]>([]);
-  const [exchangeRate, setExchangeRate] = useState<number>(0);
-  const [currency, setCurrency] = useState<string>("USD");
-  const online = useOnlineStatus();
   const { toast } = useToast();
 
-  const productLiveQuery = useMemo(() => ({
-      collection: 'products',
+  // ── RxDB products ──
+  const productLiveQuery = useMemo(
+    () => ({
+      collection: "products",
       query: {
         selector: { isActive: 1 },
-        sort: [{ name: 'asc' as const }],
-      }
-  }), []);
-  const { results, loading: productsLoading } = useLiveRxQuery<ProductDoc>(productLiveQuery);
+        sort: [{ name: "asc" as const }],
+      },
+    }),
+    [],
+  );
+  const { results: rxdbResults, loading: productsLoading } =
+    useLiveRxQuery<ProductDoc>(productLiveQuery);
 
-  const rate = exchangeRate || 1;
-
-  const products = useMemo(() => {
-    return results
-      .map((p) => {
+  const products = useMemo(
+    () =>
+      rxdbResults.map((p) => {
         const d = p.toJSON() as ProductDoc;
         return {
           ...d,
           category: d.categoryName ? { name: d.categoryName } : null,
         };
-      })
-      .filter((p) => p.isActive) as unknown as ProductWithCategory[];
-  }, [results]);
+      }) as unknown as ProductWithCategory[],
+    [rxdbResults],
+  );
 
   useEffect(() => {
-    if (results.length > 0 && !navigator.onLine) {
+    if (rxdbResults.length > 0 && !navigator.onLine) {
       toast("Modo offline — catálogo sincronizado", "success");
     }
-  }, [results.length, toast]);
+  }, [rxdbResults, toast]);
 
-  useEffect(() => {
-    api.exchange.get().then((r) => {
-      const usdRate = (r as any)?.USD || 0;
-      if (usdRate > 0) setExchangeRate(usdRate);
-    }).catch(() => {});
-  }, []);
+  // ── Hooks ──
+  const currencyState = useCurrency(products);
+  const {
+    currency,
+    setCurrency,
+    currencies,
+    currentRate,
+    symbol,
+    exchangeRateText,
+    cycleCurrency,
+  } = currencyState;
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId) || orders[0];
+  const orderState = useOrders(currency);
+  const {
+    orders,
+    activeOrderId,
+    activeOrder,
+    itemCount,
+    totalDisplay,
+    addToCart,
+    updateQuantity,
+    addOrder,
+    removeOrder,
+    switchOrder,
+    resetActiveOrder,
+  } = orderState;
 
-  const categories = [...new Set(products.map((p) => p.category?.name).filter(Boolean))] as string[];
-
-  const filtered = products.filter((p) => {
-    const q = search.toLowerCase();
-    const matchSearch = !search || p.name.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q) || p.barcode?.toLowerCase().includes(q);
-    const matchCategory = !selectedCategory || p.category?.name === selectedCategory;
-    return matchSearch && matchCategory;
+  const paymentState = usePayment({
+    totalDisplay,
+    currency,
+    items: activeOrder.items,
+    onPaid: resetActiveOrder,
   });
+  const {
+    payDialog,
+    setPayDialog,
+    receiptSale,
+    setReceiptSale,
+    submitting,
+    payments,
+    paymentsTotal,
+    paymentDiff,
+    openPayDialog,
+    addPaymentSplit,
+    updatePayment,
+    removePayment,
+    mobilePaymentError,
+    submitPayment,
+  } = paymentState;
 
-  const totalUSD = +activeOrder.items.reduce((sum, item) => {
-    const subtotal = +(item.product.price * item.quantity).toFixed(2);
-    const tax = +(subtotal * ((item.product as any).taxRate || 0) / 100).toFixed(2);
-    return sum + subtotal + tax;
-  }, 0).toFixed(2);
+  // ── Search & filter ──
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const totalDisplay = currency === "VES" ? totalUSD * rate : totalUSD;
-  const symbol = currency === "VES" ? "Bs." : "$";
+  const categories = useMemo(
+    () =>
+      [
+        ...new Set(products.map((p) => p.category?.name).filter(Boolean)),
+      ] as string[],
+    [products],
+  );
 
-  const itemCount = activeOrder.items.reduce((sum, item) => sum + item.quantity, 0);
-
-  function addToCart(product: ProductWithCategory) {
-    setOrders((prev) => prev.map((order) => {
-      if (order.id !== activeOrderId) return order;
-      const existing = order.items.find((item) => item.product.id === product.id);
-      if (existing) {
-        return {
-          ...order,
-          items: order.items.map((item) =>
-            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
-          ),
-        };
-      }
-      return { ...order, items: [...order.items, { product, quantity: 1 }] };
-    }));
-  }
-
-  function updateQuantity(productId: number, qty: number) {
-    setOrders((prev) => prev.map((order) => {
-      if (order.id !== activeOrderId) return order;
-      return {
-        ...order,
-        items: qty <= 0
-          ? order.items.filter((item) => item.product.id !== productId)
-          : order.items.map((item) => (item.product.id === productId ? { ...item, quantity: qty } : item)),
-      };
-    }));
-  }
-
-  function addOrder() {
-    const newOrder = createOrder();
-    setOrders((prev) => [...prev, newOrder]);
-    setActiveOrderId(newOrder.id);
-  }
-
-  function removeOrder(id: number) {
-    if (orders.length <= 1) return;
-    setOrders((prev) => {
-      const next = prev.filter((o) => o.id !== id);
-      if (activeOrderId === id) {
-        setActiveOrderId(next[0].id);
-      }
-      return next;
+  const filteredProducts = useMemo(() => {
+    const q = search.toLowerCase();
+    return products.filter((p) => {
+      const matchSearch =
+        !search ||
+        p.name.toLowerCase().includes(q) ||
+        p.code?.toLowerCase().includes(q) ||
+        p.barcode?.toLowerCase().includes(q);
+      const matchCategory =
+        !selectedCategory || p.category?.name === selectedCategory;
+      return matchSearch && matchCategory;
     });
-  }
+  }, [products, search, selectedCategory]);
 
-  function switchOrder(id: number) {
-    setActiveOrderId(id);
-    setCartOpen(false);
-  }
-
-  function openPayDialog() {
-    if (activeOrder.items.length === 0) return;
-    setPayments([{ methodId: 1, amount: totalDisplay.toFixed(2) }]);
-    setPayDialog(true);
-  }
-
-  function addPaymentSplit() {
-    const remaining = totalDisplay - payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-    if (remaining > 0.01) setPayments((prev) => [...prev, { methodId: 1, amount: remaining.toFixed(2) }]);
-  }
-
-  function updatePayment(index: number, field: "methodId" | "amount", value: string | number) {
-    setPayments((prev) => prev.map((p, i) => i === index ? { ...p, [field]: value } : p));
-  }
-
-  function removePayment(index: number) {
-    setPayments((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  const paymentsTotal = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-  const paymentDiff = totalDisplay - paymentsTotal;
-
-  async function submitPayment() {
-    if (Math.abs(paymentDiff) > 0.009 || submitting) return;
-    setSubmitting(true);
-
-    const items = activeOrder.items.map((item) => ({
-      productId: item.product.id,
-      quantity: item.quantity,
-      unitPrice: item.product.price,
-      discountPercent: 0,
-    }));
-
-    const paymentData = {
-      payments: payments
-        .filter((p) => parseFloat(p.amount) > 0)
-        .map((p) => ({
-          paymentMethodId: p.methodId,
-          amount: +parseFloat(p.amount).toFixed(2),
-        })),
-    };
-
-    if (!online) {
-      try {
-        const db = await getDatabase();
-        await db.pending_ops.insert({
-          rxid: crypto.randomUUID(),
-          type: "create_sale",
-          payload: {
-            status: "in_progress",
-            items,
-            payments: paymentData.payments,
-          },
-          createdAt: new Date().toISOString(),
-          retries: 0,
-        });
-        setPayDialog(false);
-        toast("Venta guardada sin conexión — se sincronizará automáticamente", "success");
-        resetOrders();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Error guardando offline";
-        toast(msg, "error");
-      }
-      setSubmitting(false);
-      return;
-    }
-
-    try {
-      const sale: any = await api.sales.create({
-        status: "in_progress",
-        items,
-      });
-
-      const paid: any = await api.sales.pay(sale.id, paymentData);
-
-      setPayDialog(false);
-      setReceiptSale(paid);
-      toast("Venta completada", "success", {
-        label: "Imprimir",
-        onClick: () => setReceiptSale(paid),
-      });
-
-      resetOrders();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Error desconocido";
-      toast(msg, "error");
-    }
-    setSubmitting(false);
-  }
-
-  function resetOrders() {
-    setOrders((prev) => {
-      const next = prev.filter((o) => o.id !== activeOrderId);
-      if (next.length === 0) {
-        const fresh = createOrder("Orden 1");
-        setActiveOrderId(fresh.id);
-        return [fresh];
-      }
-      if (activeOrderId === next[0]?.id || !next.find((o) => o.id === activeOrderId)) {
-        setActiveOrderId(next[0].id);
-      }
-      return next;
-    });
-  }
-
-  const shortcuts: ShortcutConfig[] = useMemo(() => [
-    { key: "F1", action: () => openPayDialog(), description: "Cobrar (F1)" },
-    { key: "F2", action: () => addOrder(), description: "Nueva orden (F2)" },
-    { key: "F3", action: () => { searchInputRef.current?.focus(); }, description: "Buscar producto (F3)" },
-    { key: "F4", action: () => { setCurrency(currency === "USD" ? "VES" : "USD"); }, description: "Cambiar moneda (F4)" },
-    { key: "Escape", action: () => { setPayDialog(false); setCartOpen(false); }, description: "Cerrar modales (Esc)" },
-    { key: "Delete", action: () => { if (activeOrder.items.length > 0 && !payDialog && !cartOpen) removeOrder(activeOrderId); }, description: "Eliminar orden actual (Supr)" },
-  ], [activeOrderId, activeOrder, payDialog, cartOpen, currency, openPayDialog, addOrder, removeOrder]);
+  // ── Keyboard shortcuts ──
+  const shortcuts: ShortcutConfig[] = useMemo(
+    () => [
+      { key: "F1", action: openPayDialog, description: "Cobrar (F1)" },
+      { key: "F2", action: addOrder, description: "Nueva orden (F2)" },
+      {
+        key: "F3",
+        action: () => searchInputRef.current?.focus(),
+        description: "Buscar producto (F3)",
+      },
+      { key: "F4", action: cycleCurrency, description: "Cambiar moneda (F4)" },
+      {
+        key: "Escape",
+        action: () => {
+          setPayDialog(false);
+          setCartOpen(false);
+        },
+        description: "Cerrar modales (Esc)",
+      },
+      {
+        key: "Delete",
+        action: () => {
+          if (activeOrder.items.length > 0 && !payDialog && !cartOpen)
+            removeOrder(activeOrderId);
+        },
+        description: "Eliminar orden actual (Supr)",
+      },
+    ],
+    [
+      activeOrderId,
+      activeOrder,
+      payDialog,
+      cartOpen,
+      cycleCurrency,
+      addOrder,
+      removeOrder,
+      openPayDialog,
+    ],
+  );
 
   useKeyboardShortcuts(shortcuts);
 
+  // ── Render ──
   if (productsLoading) return <Loading spinner text="Cargando..." />;
+
+  const cartAsideProps = {
+    cartOpen,
+    setCartOpen,
+    orders,
+    activeOrderId,
+    itemCount,
+    totalDisplay,
+    symbol,
+    currency,
+    rate: currentRate,
+    submitting,
+    hasMultipleOrders: orders.length > 1,
+    activeOrderEmpty: activeOrder.items.length === 0,
+    onSwitchOrder: (id: number) => {
+      switchOrder(id);
+      setCartOpen(false);
+    },
+    onAddOrder: addOrder,
+    onRemoveOrder: removeOrder,
+    onOpenPay: openPayDialog,
+    onUpdateQuantity: updateQuantity,
+  };
 
   return (
     <>
-      <div className="flex h-dvh flex-col lg:flex-row">
-        <main className="lg:flex-1 min-w-0 lg:border-r border-zinc-200 dark:border-zinc-800 pb-20 lg:pb-0 min-h-0 flex flex-col">
-          <div className="lg:hidden fixed bottom-4 left-4 right-4 z-[60]">
-            <Button onClick={() => setCartOpen(true)} className="w-full py-3 rounded-xl shadow-lg">
-              <ShoppingCart size={18} />
-              {activeOrder.name} — {symbol}{totalDisplay.toFixed(2)}
-            </Button>
-          </div>
-
-          <div className="sticky top-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-800 p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"><Search size={16} /></span>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Buscar producto..."
-                  value={search}
-                  onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:border-indigo-400 focus:bg-white dark:focus:bg-zinc-900 transition-colors"
-                />
-              </div>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory((e.target as HTMLSelectElement).value)}
-                className="px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl outline-none focus:border-indigo-400 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 transition-colors"
-              >
-                <option value="">Todas</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-              {rate > 0 && <span>Tasa: 1 USD = {rate.toFixed(2)} VES</span>}
-              {CURRENCIES.map((c) => (
-                <button
-                  key={c.code}
-                  onClick={() => setCurrency(c.code as "USD" | "VES")}
-                  className={`px-2 py-0.5 rounded font-medium transition-colors ${
-                    currency === c.code ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 content-start min-h-0">
-            {filtered.map((product) => (
-              <button
-                key={product.id}
-                onClick={() => addToCart(product)}
-                disabled={product.currentStock <= 0}
-                className="flex flex-col items-center justify-center p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-center hover:border-indigo-300 hover:shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-              >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center mb-2">
-                  {product.category ? <CategoryIcon name={product.category.name} /> : <Package size={20} className="text-indigo-500" />}
-                </div>
-                <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 leading-tight">{product.name}</span>
-                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-1">{symbol}{(currency === "VES" ? product.price * rate : product.price).toFixed(2)}</span>
-                {product.currentStock <= 5 && product.currentStock > 0 && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded mt-1">{product.currentStock} uds.</span>
-                )}
-                {product.currentStock === 0 && (
-                  <span className="text-[10px] text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded mt-1">Agotado</span>
-                )}
-              </button>
-            ))}
-            {filtered.length === 0 && (
-              <p className="col-span-full text-center text-zinc-400 py-12 text-sm">Sin resultados</p>
-            )}
-          </div>
+      <div className="pos-layout">
+        <main className="pos-main">
+          <MobileCartButton
+            orderName={activeOrder.name}
+            symbol={symbol}
+            total={totalDisplay}
+            cartOpen={cartOpen}
+            onClick={() => setCartOpen(true)}
+          />
+          <PosToolbar
+            search={search}
+            onSearch={setSearch}
+            searchRef={searchInputRef}
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+            currencies={currencies}
+            currency={currency}
+            onCurrencyChange={setCurrency}
+            exchangeRateText={exchangeRateText}
+          />
+          <ProductGrid
+            products={filteredProducts}
+            currency={currency}
+            symbol={symbol}
+            onAddToCart={addToCart}
+          />
         </main>
 
-        <CartAside
-          mobile={false}
-          cartOpen={cartOpen}
-          setCartOpen={setCartOpen}
-          orders={orders}
-          activeOrderId={activeOrderId}
-          itemCount={itemCount}
-          totalDisplay={totalDisplay}
-          symbol={symbol}
-          currency={currency}
-          rate={rate}
-          submitting={submitting}
-          hasMultipleOrders={orders.length > 1}
-          activeOrderEmpty={activeOrder.items.length === 0}
-          onSwitchOrder={switchOrder}
-          onAddOrder={addOrder}
-          onRemoveOrder={removeOrder}
-          onOpenPay={openPayDialog}
-          onUpdateQuantity={updateQuantity}
-        />
-
-        <CartAside
-          mobile={true}
-          cartOpen={cartOpen}
-          setCartOpen={setCartOpen}
-          orders={orders}
-          activeOrderId={activeOrderId}
-          itemCount={itemCount}
-          totalDisplay={totalDisplay}
-          symbol={symbol}
-          currency={currency}
-          rate={rate}
-          submitting={submitting}
-          hasMultipleOrders={orders.length > 1}
-          activeOrderEmpty={activeOrder.items.length === 0}
-          onSwitchOrder={switchOrder}
-          onAddOrder={addOrder}
-          onRemoveOrder={removeOrder}
-          onOpenPay={openPayDialog}
-          onUpdateQuantity={updateQuantity}
-        />
+        <CartAside mobile={false} {...cartAsideProps} />
+        <CartAside mobile={true} {...cartAsideProps} />
       </div>
 
-      <Dialog open={payDialog} onClose={() => setPayDialog(false)}>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Cobrar {activeOrder.name}</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Combina efectivo, tarjeta o transferencia.</p>
-          </div>
-          <button className="rounded-lg px-2 py-1 text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => setPayDialog(false)}>Cerrar</button>
-        </div>
-        <div className="mb-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3">
-          <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-            <span>Total en {currency}</span>
-            <span className="text-xl font-bold text-slate-900 dark:text-slate-100">{symbol}{totalDisplay.toFixed(2)}</span>
-          </div>
-          {rate > 0 && (
-            <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 mt-1">
-              <span>Tasa: 1 USD = {rate.toFixed(2)} VES</span>
-            </div>
-          )}
-        </div>
-        <div className="space-y-3">
-          {payments.map((payment, index) => (
-            <div key={index} className="grid grid-cols-[1fr_120px_auto] items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 p-3">
-              <select className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white" value={payment.methodId} onChange={(e: any) => updatePayment(index, "methodId", parseInt(e.target.value))}>
-                {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-              <input className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-right text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white" type="number" min="0.01" step="0.01" value={payment.amount} onInput={(e: any) => updatePayment(index, "amount", e.target.value)} />
-              <button className="rounded-lg px-2 py-1 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" onClick={() => removePayment(index)} disabled={payments.length === 1}><X size={16} /></button>
-            </div>
-          ))}
-        </div>
-        <button className="mt-3 w-full rounded-xl border border-dashed border-violet-300 px-4 py-2 text-sm font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/30" onClick={addPaymentSplit} disabled={paymentDiff <= 0.01}>Agregar otra forma de pago</button>
-        <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Pagado</span>
-            <span className="font-semibold text-slate-900 dark:text-slate-100">{symbol}{paymentsTotal.toFixed(2)}</span>
-          </div>
-          <div className="mt-1 flex items-center justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Diferencia</span>
-            <span className={`font-semibold ${Math.abs(paymentDiff) < 0.009 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{Math.abs(paymentDiff) < 0.009 ? "Cuadrado" : `${symbol}${Math.abs(paymentDiff).toFixed(2)}`}</span>
-          </div>
-        </div>
-        <Button variant="success" size="lg" className="mt-4 w-full rounded-2xl" onClick={submitPayment} disabled={submitting || Math.abs(paymentDiff) > 0.009}>
-          {submitting ? "Procesando..." : `Confirmar cobro de ${symbol}${totalDisplay.toFixed(2)}`}
-        </Button>
-      </Dialog>
+      <PaymentDialog
+        open={payDialog}
+        onClose={() => setPayDialog(false)}
+        orderName={activeOrder.name}
+        totalDisplay={totalDisplay}
+        symbol={symbol}
+        currency={currency}
+        exchangeRateText={exchangeRateText}
+        payments={payments}
+        paymentsTotal={paymentsTotal}
+        paymentDiff={paymentDiff}
+        submitting={submitting}
+        onUpdatePayment={updatePayment}
+        onRemovePayment={removePayment}
+        onAddPaymentSplit={addPaymentSplit}
+        onSubmit={submitPayment}
+        getMobileError={mobilePaymentError}
+      />
 
-      {receiptSale && <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />}
+      {receiptSale && (
+        <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />
+      )}
     </>
   );
 }

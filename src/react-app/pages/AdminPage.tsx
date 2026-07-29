@@ -26,6 +26,7 @@ interface User {
 
 export function AdminPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [permissionsMap, setPermissionsMap] = useState<Record<number, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -36,6 +37,8 @@ export function AdminPage() {
     try {
       const usersList = await api.auth.list();
       setUsers(usersList);
+      const permMap = await api.auth.getPermissionsBatch(usersList.map((u: User) => u.id));
+      setPermissionsMap(permMap as Record<number, string[]>);
     } catch {}
     setLoading(false);
   };
@@ -139,7 +142,7 @@ export function AdminPage() {
                 </Table.Cell>
                 <Table.Cell className="text-center">
                   <Button size="sm" variant="ghost" onClick={() => setEditPermsUser(u)} aria-label={`Permisos de ${u.username}`}>
-                    {u.userPermissions.length} pantallas
+                    {(permissionsMap[u.id] || []).length} pantallas
                   </Button>
                 </Table.Cell>
                 <Table.Cell className="text-right">

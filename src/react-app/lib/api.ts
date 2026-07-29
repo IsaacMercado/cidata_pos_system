@@ -130,7 +130,10 @@ export const api = {
         payments: {
           paymentMethodId: number;
           amount: number;
+          currency?: string;
           reference?: string;
+          paymentDate?: string;
+          phone?: string;
         }[];
         customerId?: number;
         notes?: string;
@@ -223,8 +226,8 @@ export const api = {
           username: string;
           name: string;
           role: string;
+          permissions: string[];
           isSuperuser: number;
-          is_superuser?: number;
         };
         token: string;
         success: boolean;
@@ -238,8 +241,8 @@ export const api = {
           username: string;
           name: string;
           role: string;
+          permissions: string[];
           isSuperuser: number;
-          is_superuser?: number;
         };
         token: string;
         success: boolean;
@@ -252,8 +255,8 @@ export const api = {
         username: string;
         name: string;
         role: string;
+        permissions: string[];
         isSuperuser: number;
-        is_superuser?: number;
       } | null>("/users/me", undefined, false),
 
     logout: () =>

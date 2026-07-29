@@ -24,7 +24,8 @@ export interface LoginResult {
     username: string;
     name: string;
     role: string;
-    is_superuser: number;
+    permissions: string[];
+    isSuperuser: number;
   };
   token: string | null;
   success: boolean;
@@ -51,7 +52,7 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
     try {
       const data = await api.auth.login({ email, password });
       await onLogin({
-        user: { ...data.user, is_superuser: data.user.isSuperuser ?? data.user.is_superuser ?? 0 },
+        user: data.user,
         token: data.token,
         success: true,
       });
@@ -69,7 +70,7 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
     try {
       const data = await api.auth.loginPin({ username, pin });
       await onLogin({
-        user: { ...data.user, is_superuser: data.user.isSuperuser ?? data.user.is_superuser ?? 0 },
+        user: { ...data.user, isSuperuser: data.user.isSuperuser ?? data.user.isSuperuser ?? 0 },
         token: data.token,
         success: true,
       });
@@ -107,7 +108,8 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
           username: cached.username,
           name: cached.name,
           role: cached.role,
-          is_superuser: cached.isSuperuser,
+          permissions: (cached as any).permissions ?? [],
+          isSuperuser: cached.isSuperuser,
         },
         token: null,
         success: true,

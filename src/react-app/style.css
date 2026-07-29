@@ -211,6 +211,7 @@ body {
 dialog {
   border: none;
   padding: 0;
+  margin: auto;
   max-width: 90vw;
   max-height: 90vh;
   border-radius: var(--radius-xl);
@@ -466,4 +467,91 @@ dialog::backdrop {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ─── POS Layout ──────────────────────────────────────────────────────────── */
+
+.pos-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 3.5rem);
+}
+
+@media (min-width: 768px) {
+  .pos-layout {
+    flex-direction: row;
+    height: calc(100dvh - 1rem);
+  }
+}
+
+.pos-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  padding-bottom: 5rem; /* space for MobileCartButton */
+}
+
+@media (min-width: 768px) {
+  .pos-main {
+    padding-bottom: 0;
+    border-right: 1px solid #e4e4e7;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  @media (min-width: 768px) {
+    .pos-main {
+      border-right-color: #27272a;
+    }
+  }
+}
+
+/* ─── POS Scrollbar ──────────────────────────────────────────────────────── */
+
+.pos-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.pos-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.pos-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pos-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 9999px;
+}
+
+.pos-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  .pos-scrollbar {
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  }
+
+  .pos-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .pos-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+}
+
+/* ─── Line clamp utility ─────────────────────────────────────────────────── */
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

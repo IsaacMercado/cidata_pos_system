@@ -2,7 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { sign } from "hono/jwt";
-import { userPermissions, userPermissions, users } from "../db/schema";
+import { userPermissions, users } from "../db/schema";
 import type { Env } from "../index";
 import { getJwtPayload, passwordHash, verifyPassword } from "../lib/auth";
 

@@ -7,7 +7,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { useLocation } from "wouter-preact";
-import type { UserInfo } from "../App";
+import type { UserInfo } from "../components/Auth";
 
 const modules = [
   {
@@ -75,7 +75,7 @@ interface WelcomePageProps {
 
 export function WelcomePage({ user, permissions }: WelcomePageProps) {
   const [, navigate] = useLocation();
-  const isSuperuser = user.is_superuser === 1;
+  const isSuperuser = user.isSuperuser === 1;
   const visible = modules.filter(
     (m) => isSuperuser || permissions.includes(m.screen),
   );

@@ -206,6 +206,10 @@ export const salePayments = sqliteTable("sale_payments", {
   paymentMethodId: integer("payment_method_id").references(() => paymentMethods.id),
   amount: real("amount").notNull(),
   reference: text("reference"),
+  paymentDate: text("payment_date"),
+  phone: text("phone"),
+  currency: text("currency").notNull().default("USD"),
+  amountUsd: real("amount_usd").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 

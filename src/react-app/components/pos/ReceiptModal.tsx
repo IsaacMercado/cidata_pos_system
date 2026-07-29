@@ -70,11 +70,13 @@ export function ReceiptModal({
           <tbody>
             {(sale.items || []).map((item) => (
               <tr key={item.id} className="border-t border-zinc-100">
-                <td className="py-1.5 text-zinc-800">{(item as any).name ?? item.product?.name ?? '—'}</td>
-                <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
-                <td className="py-1.5 text-right font-medium">
-                  ${item.subtotal.toFixed(2)}
-                </td>
+            <td className="py-1.5 text-zinc-800">
+              {(item as any).name ?? item.product?.name ?? item.productId ?? '—'}
+            </td>
+            <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
+            <td className="py-1.5 text-right font-medium">
+              ${(item as any).subtotal ?? (item.unitPrice * item.quantity).toFixed(2)}
+            </td>
               </tr>
             ))}
           </tbody>
@@ -85,8 +87,8 @@ export function ReceiptModal({
             <span>Subtotal</span>
             <span>${sale.subtotal.toFixed(2)}</span>
           </div>
-          {(sale.payments || []).map((p) => (
-            <div key={p.id} className="flex justify-between text-zinc-500">
+          {(sale.payments || []).map((p, i) => (
+            <div key={p.id ?? i} className="flex justify-between text-zinc-500">
               <span>{methodLabel[p.paymentMethodId] || `Método ${p.paymentMethodId}`}</span>
               <span>${p.amount.toFixed(2)}</span>
             </div>

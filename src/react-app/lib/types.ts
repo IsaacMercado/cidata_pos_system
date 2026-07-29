@@ -8,6 +8,13 @@ export interface Category {
   updatedAt: string;
 }
 
+export interface ProductRate {
+  code: string;
+  name: string;
+  rate: number;
+  fetchedAt: string;
+}
+
 export interface Product {
   id: number;
   code: string;
@@ -22,6 +29,7 @@ export interface Product {
   minStock: number;
   currentStock: number;
   isActive: number;
+  rates?: ProductRate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -54,7 +62,11 @@ export interface SalePayment {
   saleId: number;
   paymentMethodId: number;
   amount: number;
+  amountUsd?: number;
+  currency?: string;
   reference: string | null;
+  paymentDate?: string | null;
+  phone?: string | null;
   createdAt: string;
 }
 

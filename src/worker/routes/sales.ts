@@ -1,11 +1,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { products, saleItems, salePayments, sales, sequences } from "../db/schema";
+import { exchangeRates, products, saleItems, salePayments, sales, sequences } from "../db/schema";
 import type { Env } from "../index";
 import { validateJson, validationError } from "../lib/zvalidator";
 
 const app = new Hono<Env>();
+
+const PAYMENT_METHOD_MOBILE_ID = 4;
 
 const saleItemInput = z.object({
   productId: z.number(),
@@ -31,14 +33,35 @@ const addItemsSchema = z.object({
 const paymentInput = z.object({
   paymentMethodId: z.number(),
   amount: z.number().min(0.01),
+  currency: z.enum(["USD", "VES"]).default("USD"),
   reference: z.string().optional(),
+  paymentDate: z.string().optional(),
+  phone: z.string().optional(),
 });
 
 const paySchema = z.object({
   payments: z.array(paymentInput).min(1),
   customerId: z.number().optional(),
   notes: z.string().optional(),
-});
+}).refine(
+  (body) => body.payments.every((p) => {
+    if (p.paymentMethodId !== PAYMENT_METHOD_MOBILE_ID) return true;
+    return !!p.reference && !!p.paymentDate && !!p.phone;
+  }),
+  { message: "Pago móvil requiere reference, paymentDate y phone" },
+);
+
+async function getCurrentRate(db: Env["Variables"]["db"], currencyFrom: string, currencyTo: string): Promise<number | null> {
+  if (currencyFrom === currencyTo) return 1;
+  const row = await db
+    .select({ rate: exchangeRates.rate })
+    .from(exchangeRates)
+    .where(and(eq(exchangeRates.currencyFrom, currencyFrom), eq(exchangeRates.currencyTo, currencyTo)))
+    .orderBy(desc(exchangeRates.fetchedAt))
+    .limit(1)
+    .get();
+  return row?.rate ?? null;
+}
 
 async function generateReceiptNumber(db: Env["Variables"]["db"]): Promise<string> {
   const date = new Date();
@@ -249,11 +272,21 @@ app.post("/:id/pay", async (c) => {
     return c.json(validationError(e), 400);
   }
 
-  const paymentValues = body.payments.map((p) => ({
-    saleId: id,
-    paymentMethodId: p.paymentMethodId,
-    amount: Math.round(p.amount * 100) / 100,
-    reference: p.reference || null,
+  const usdRate = await getCurrentRate(db, "USD", "VES");
+  if (!usdRate) return c.json({ error: "No hay tasa USD→VES configurada" }, 400);
+
+  const paymentValues = await Promise.all(body.payments.map(async (p) => {
+    const amountUsd = p.currency === "VES" ? +(p.amount / usdRate).toFixed(2) : p.amount;
+    return {
+      saleId: id,
+      paymentMethodId: p.paymentMethodId,
+      amount: Math.round(amountUsd * 100) / 100,
+      amountUsd: Math.round(amountUsd * 100) / 100,
+      currency: p.currency,
+      reference: p.reference || null,
+      paymentDate: p.paymentDate || null,
+      phone: p.phone || null,
+    };
   }));
 
   try {
