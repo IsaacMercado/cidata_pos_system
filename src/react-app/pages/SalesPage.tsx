@@ -145,6 +145,12 @@ export function SalesPage() {
                 <span>Subtotal</span>
                 <span>${detail.subtotal?.toFixed(2)}</span>
               </div>
+              {(detail.taxTotal ?? 0) > 0 && (
+                <div className="flex justify-between text-zinc-500">
+                  <span>IVA ({((detail.taxTotal / (detail.subtotal || 1)) * 100).toFixed(1)}%)</span>
+                  <span>${(detail.taxTotal ?? 0).toFixed(2)}</span>
+                </div>
+              )}
               {(detail.payments || []).map((p) => {
                 const Icon = METHOD_ICON[p.paymentMethodId];
                 return (

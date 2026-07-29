@@ -53,6 +53,10 @@ interface FormData {
   categoryId: number | undefined;
   description: string | undefined;
   currentStock: number;
+  barcode: string;
+  taxRate: number;
+  unit: string;
+  minStock: number;
 }
 
 export function ProductsPage() {
@@ -69,6 +73,10 @@ export function ProductsPage() {
     categoryId: undefined,
     description: undefined,
     currentStock: 0,
+    barcode: "",
+    taxRate: 0,
+    unit: "unit",
+    minStock: 0,
   });
   const [stockDisplay, setStockDisplay] = useState(0);
   const { toast } = useToast();
@@ -131,6 +139,10 @@ export function ProductsPage() {
       categoryId: undefined,
       description: undefined,
       currentStock: 0,
+      barcode: "",
+      taxRate: 0,
+      unit: "unit",
+      minStock: 0,
     });
     setModalOpen(true);
   }
@@ -146,6 +158,10 @@ export function ProductsPage() {
       categoryId: product.categoryId || undefined,
       description: product.description || undefined,
       currentStock: 0,
+      barcode: product.barcode || "",
+      taxRate: product.taxRate || 0,
+      unit: product.unit || "unit",
+      minStock: product.minStock || 0,
     });
     setModalOpen(true);
   }
@@ -157,24 +173,25 @@ export function ProductsPage() {
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
     try {
+      const payload = {
+        code: data.code,
+        name: data.name,
+        price: data.price,
+        cost: data.cost || 0,
+        categoryId: data.categoryId || undefined,
+        description: data.description || undefined,
+        barcode: data.barcode || undefined,
+        taxRate: data.taxRate || 0,
+        unit: data.unit || "unit",
+        minStock: data.minStock || 0,
+      };
       if (editingProduct) {
-        await api.products.update(editingProduct.id, {
-          code: data.code,
-          name: data.name,
-          price: data.price,
-          cost: data.cost || 0,
-          categoryId: data.categoryId || undefined,
-          description: data.description || undefined,
-        });
+        await api.products.update(editingProduct.id, payload);
         toast("Producto actualizado", "success");
       } else {
         await api.products.create({
+          ...payload,
           code: data.code || `PROD-${Date.now()}`,
-          name: data.name,
-          price: data.price,
-          cost: data.cost || 0,
-          categoryId: data.categoryId || undefined,
-          description: data.description || undefined,
         });
         toast("Producto creado", "success");
       }
@@ -248,13 +265,17 @@ export function ProductsPage() {
                     variant={
                       p.currentStock === 0
                         ? "danger"
-                        : p.currentStock <= 5
+                        : p.minStock > 0 && p.currentStock <= p.minStock
                           ? "warning"
                           : "success"
                     }
                     dot
+                    title={p.minStock > 0 ? `Stock mínimo: ${p.minStock}` : undefined}
                   >
                     {p.currentStock}
+                    {p.minStock > 0 && (
+                      <span className="text-[10px] opacity-60 ml-1">/ {p.minStock}</span>
+                    )}
                   </Badge>
                 </Table.Cell>
                 <Table.Cell>
@@ -320,19 +341,23 @@ export function ProductsPage() {
                 type="number"
                 step="0.01"
                 className="flex-1"
-                {...register("price", { required: true })}
+                {...register("price", { required: true, valueAsNumber: true })}
               />
               <Input
                 label="Costo"
                 type="number"
                 step="0.01"
                 className="flex-1"
-                {...register("cost")}
+                {...register("cost", { valueAsNumber: true })}
               />
             </div>
 
             <div className="flex gap-3">
               <Input label="Código" className="flex-1" {...register("code")} />
+              <Input label="Código Barras" className="flex-1" {...register("barcode")} />
+            </div>
+
+            <div className="flex gap-3">
               <Input
                 label="Stock"
                 type="number"
@@ -340,6 +365,24 @@ export function ProductsPage() {
                 readOnly
                 value={stockDisplay}
               />
+              <Input
+                label="Stock Mínimo"
+                type="number"
+                step="1"
+                className="flex-1"
+                {...register("minStock", { valueAsNumber: true })}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Input
+                label="Impuesto (%)"
+                type="number"
+                step="0.01"
+                className="flex-1"
+                {...register("taxRate", { valueAsNumber: true })}
+              />
+              <Input label="Unidad" className="flex-1" {...register("unit")} />
             </div>
 
             <Select

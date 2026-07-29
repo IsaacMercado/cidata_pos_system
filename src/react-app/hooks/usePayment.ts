@@ -1,4 +1,4 @@
-import { useState, useCallback } from "preact/hooks";
+import { useState, useCallback, useMemo } from "preact/hooks";
 import { getDatabase } from "../lib/database";
 import { useToast } from "../components/pos/Toast";
 import type { SaleDoc } from "../lib/database";
@@ -20,16 +20,29 @@ export interface PaymentInput {
 export const PAYMENT_DIFF_TOLERANCE = 0.009;
 export const PAYMENT_METHOD_MOBILE_ID = 4;
 
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+function toPosCurrency(amount: number, from: string, to: string, rateMap: Record<string, number>): number {
+  const fromRate = rateMap[from] || 1;
+  const toRate = rateMap[to] || 1;
+  return amount * toRate / fromRate;
+}
+
+function toUsd(amount: number, currency: string, rateMap: Record<string, number>): number {
+  return toPosCurrency(amount, currency, "USD", rateMap);
+}
+
 // ─── Hook ──────────────────────────────────────────────────────────────
 
 interface UsePaymentOptions {
   totalDisplay: number;
   currency: string;
   items: CartItem[];
+  rateMap: Record<string, number>;
   onPaid: () => void;
 }
 
-export function usePayment({ totalDisplay, currency, items, onPaid }: UsePaymentOptions) {
+export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: UsePaymentOptions) {
   const { toast } = useToast();
 
   const [payDialog, setPayDialog] = useState(false);
@@ -37,7 +50,10 @@ export function usePayment({ totalDisplay, currency, items, onPaid }: UsePayment
   const [receiptSale, setReceiptSale] = useState<any | null>(null);
   const [payments, setPayments] = useState<PaymentInput[]>([]);
 
-  const paymentsTotal = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const paymentsTotal = useMemo(
+    () => payments.reduce((sum, p) => sum + toPosCurrency(parseFloat(p.amount) || 0, p.currency, currency, rateMap), 0),
+    [payments, currency, rateMap],
+  );
   const paymentDiff = totalDisplay - paymentsTotal;
 
   const today = () => new Date().toISOString().slice(0, 10);
@@ -100,6 +116,7 @@ export function usePayment({ totalDisplay, currency, items, onPaid }: UsePayment
 
     let subtotal = 0;
     let discountTotal = 0;
+    let taxTotal = 0;
     const saleItems = items.map((item) => {
       const unitPrice = item.product.price;
       const quantity = item.quantity;
@@ -109,8 +126,11 @@ export function usePayment({ totalDisplay, currency, items, onPaid }: UsePayment
       const lineSubtotal = baseSubtotal - discountAmount;
       const roundedSubtotal = Math.round(lineSubtotal * 100) / 100;
       const roundedDiscount = Math.round(discountAmount * 100) / 100;
+      const itemTaxRate = item.product.taxRate || 0;
+      const itemTax = Math.round(roundedSubtotal * itemTaxRate) / 100;
       subtotal += roundedSubtotal;
       discountTotal += roundedDiscount;
+      taxTotal += itemTax;
       return {
         productId: item.product.id,
         quantity,
@@ -121,11 +141,11 @@ export function usePayment({ totalDisplay, currency, items, onPaid }: UsePayment
 
     subtotal = Math.round(subtotal * 100) / 100;
     discountTotal = Math.round(discountTotal * 100) / 100;
-    const taxTotal = 0;
-    const total = Math.round((subtotal - discountTotal) * 100) / 100;
+    taxTotal = Math.round(taxTotal * 100) / 100;
+    const total = Math.round((subtotal - discountTotal + taxTotal) * 100) / 100;
 
     const validPayments = payments.filter((p) => parseFloat(p.amount) > 0);
-    const totalPaymentsDisplay = validPayments.reduce((s, p) => s + parseFloat(p.amount), 0);
+    const totalPaymentsUsd = validPayments.reduce((s, p) => s + toUsd(parseFloat(p.amount), p.currency, rateMap), 0);
 
     const saleDoc: SaleDoc = {
       rxid: clientId,
@@ -144,8 +164,8 @@ export function usePayment({ totalDisplay, currency, items, onPaid }: UsePayment
       items: saleItems,
       payments: validPayments.map((p) => ({
         paymentMethodId: p.methodId,
-        amount: totalPaymentsDisplay > 0
-          ? Math.round(total * (parseFloat(p.amount) / totalPaymentsDisplay) * 100) / 100
+        amount: totalPaymentsUsd > 0
+          ? Math.round(total * (toUsd(parseFloat(p.amount), p.currency, rateMap) / totalPaymentsUsd) * 100) / 100
           : 0,
         currency: "USD",
         reference: p.reference || null,
@@ -203,7 +223,7 @@ export function usePayment({ totalDisplay, currency, items, onPaid }: UsePayment
     });
     onPaid();
     setSubmitting(false);
-  }, [paymentDiff, submitting, payments, items, mobilePaymentError, toast, onPaid]);
+  }, [paymentDiff, submitting, payments, items, rateMap, mobilePaymentError, toast, onPaid]);
 
   return {
     payDialog,

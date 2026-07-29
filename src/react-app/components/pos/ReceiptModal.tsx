@@ -87,6 +87,12 @@ export function ReceiptModal({
             <span>Subtotal</span>
             <span>${sale.subtotal.toFixed(2)}</span>
           </div>
+          {(sale.taxTotal ?? 0) > 0 && (
+            <div className="flex justify-between text-zinc-500">
+              <span>IVA ({((sale.taxTotal / (sale.subtotal || 1)) * 100).toFixed(1)}%)</span>
+              <span>${(sale.taxTotal ?? 0).toFixed(2)}</span>
+            </div>
+          )}
           {(sale.payments || []).map((p, i) => (
             <div key={p.id ?? i} className="flex justify-between text-zinc-500">
               <span>{methodLabel[p.paymentMethodId] || `Método ${p.paymentMethodId}`}</span>

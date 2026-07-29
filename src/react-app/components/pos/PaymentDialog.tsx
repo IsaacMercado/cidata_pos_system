@@ -1,8 +1,9 @@
-import { X, Plus, Smartphone } from "lucide-react";
-import { Dialog, Button } from "../ui";
-import { PAYMENT_METHODS } from "../../lib/paymentMethods";
+import { Plus, Smartphone, X } from "lucide-react";
+import type { CurrencyOption } from "../../hooks/useCurrency";
 import type { PaymentInput } from "../../hooks/usePayment";
 import { PAYMENT_DIFF_TOLERANCE, PAYMENT_METHOD_MOBILE_ID } from "../../hooks/usePayment";
+import { PAYMENT_METHODS } from "../../lib/paymentMethods";
+import { Button, Dialog } from "../ui";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ interface PaymentDialogProps {
   paymentsTotal: number;
   paymentDiff: number;
   submitting: boolean;
+  currencies: CurrencyOption[];
+  rateMap: Record<string, number>;
   onUpdatePayment: (index: number, field: keyof PaymentInput, value: string | number) => void;
   onRemovePayment: (index: number) => void;
   onAddPaymentSplit: () => void;
@@ -39,6 +42,8 @@ export function PaymentDialog({
   paymentsTotal,
   paymentDiff,
   submitting,
+  currencies,
+  rateMap,
   onUpdatePayment,
   onRemovePayment,
   onAddPaymentSplit,
@@ -86,14 +91,21 @@ export function PaymentDialog({
                 ? "border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-900/10"
                 : "border-slate-200 dark:border-slate-700"
             }`}>
-              {/* Method + amount row */}
-              <div className="grid grid-cols-[1fr_120px_auto] items-center gap-3">
+              {/* Method + currency + amount row */}
+              <div className="grid grid-cols-[1fr_auto_100px_auto] items-center gap-2">
                 <select
                   className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white"
                   value={payment.methodId}
                   onChange={(e: any) => onUpdatePayment(index, "methodId", parseInt(e.target.value))}
                 >
                   {PAYMENT_METHODS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <select
+                  className="rounded-xl border border-slate-300 dark:border-slate-600 px-2 py-2 text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white"
+                  value={payment.currency}
+                  onChange={(e: any) => onUpdatePayment(index, "currency", e.target.value)}
+                >
+                  {currencies.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
                 </select>
                 <input
                   className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-right text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white"

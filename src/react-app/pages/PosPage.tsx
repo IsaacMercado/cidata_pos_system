@@ -99,6 +99,7 @@ function PosPageContent() {
     setCurrency,
     currencies,
     currentRate,
+    rateMap,
     symbol,
     exchangeRateText,
     cycleCurrency,
@@ -123,6 +124,7 @@ function PosPageContent() {
     totalDisplay,
     currency,
     items: activeOrder.items,
+    rateMap,
     onPaid: resetActiveOrder,
   });
   const {
@@ -285,6 +287,8 @@ function PosPageContent() {
         paymentsTotal={paymentsTotal}
         paymentDiff={paymentDiff}
         submitting={submitting}
+        currencies={currencies}
+        rateMap={rateMap}
         onUpdatePayment={updatePayment}
         onRemovePayment={removePayment}
         onAddPaymentSplit={addPaymentSplit}

@@ -74,10 +74,10 @@ function ProductCard({ product, currency, symbol, onAddToCart }: ProductCardProp
       <span className={`text-[10px] px-1.5 py-0.5 rounded mt-1 ${
         product.currentStock <= 0
           ? "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30"
-          : product.currentStock <= 5
+          : product.minStock > 0 && product.currentStock <= product.minStock
             ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30"
             : "text-zinc-400 dark:text-zinc-500"
-      }`}>
+      }`} title={product.minStock > 0 ? `Stock mínimo: ${product.minStock}` : undefined}>
         {product.currentStock > 0 ? `${product.currentStock} uds.` : "Agotado"}
       </span>
     </button>
