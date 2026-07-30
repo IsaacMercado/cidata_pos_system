@@ -33,15 +33,18 @@ export function useOrders(currency: string) {
     [activeOrder.items, currency],
   );
 
-  const addToCart = useCallback((product: ProductWithCategory) => {
+  const addToCart = useCallback((product: ProductWithCategory, reservation?: CartItem["reservation"]) => {
     setOrders((prev) => prev.map((order) => {
       if (order.id !== activeOrderId) return order;
+      if (reservation) {
+        return { ...order, items: [...order.items, { product, quantity: 1, reservation }] };
+      }
       const existing = order.items.find((item) => item.product.id === product.id);
       if (!existing) {
-        if (product.currentStock < 1) return order;
+        if (product.currentStock < 1 && product.productType === "simple") return order;
         return { ...order, items: [...order.items, { product, quantity: 1 }] };
       }
-      if (existing.quantity >= product.currentStock) return order;
+      if (existing.quantity >= product.currentStock && product.productType === "simple") return order;
       return {
         ...order,
         items: order.items.map((item) =>
@@ -56,7 +59,8 @@ export function useOrders(currency: string) {
       if (order.id !== activeOrderId) return order;
       const item = order.items.find((i) => i.product.id === productId);
       if (!item) return order;
-      const clamped = Math.min(Math.max(qty, 0), item.product.currentStock);
+      const maxStock = item.reservation || item.product.productType === "combo" ? 999999 : item.product.currentStock;
+      const clamped = Math.min(Math.max(qty, 0), maxStock);
       if (clamped <= 0) {
         return { ...order, items: order.items.filter((i) => i.product.id !== productId) };
       }

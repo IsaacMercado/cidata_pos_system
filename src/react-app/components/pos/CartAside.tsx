@@ -84,8 +84,13 @@ export function CartAside({
         {activeOrder.items.map((item) => {
           const localPrice = priceInCurrency(item.product, currency);
           const usdPrice = item.product.price;
-          const lineTotal = +(localPrice * item.quantity).toFixed(2);
-          const lineTotalUsd = +(usdPrice * item.quantity).toFixed(2);
+          const isReservation = item.reservation;
+          const lineTotal = isReservation && item.reservation
+            ? item.reservation.total
+            : +(localPrice * item.quantity).toFixed(2);
+          const lineTotalUsd = isReservation && item.reservation
+            ? item.reservation.total
+            : +(usdPrice * item.quantity).toFixed(2);
 
           return (
             <div key={item.product.id} className="flex items-center gap-3 bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
@@ -93,11 +98,20 @@ export function CartAside({
                 <Package size={18} className="text-indigo-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{item.product.name}</p>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  {symbol}{localPrice.toFixed(2)} c/u
-                  {showUsdEquiv && <span className="ml-1 text-zinc-300 dark:text-zinc-600">· ${usdPrice.toFixed(2)}</span>}
+                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">
+                  {item.product.name}
+                  {isReservation && <span className="text-[10px] text-emerald-600 ml-1">(Reserva)</span>}
                 </p>
+                {isReservation && item.reservation ? (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {item.reservation.checkIn} → {item.reservation.checkOut}
+                  </p>
+                ) : (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {symbol}{localPrice.toFixed(2)} c/u
+                    {showUsdEquiv && <span className="ml-1 text-zinc-300 dark:text-zinc-600">· ${usdPrice.toFixed(2)}</span>}
+                  </p>
+                )}
                 <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
                   {symbol}{lineTotal.toFixed(2)}
                   {showUsdEquiv && <span className="ml-1 text-zinc-400 dark:text-zinc-500 font-normal">(${lineTotalUsd.toFixed(2)})</span>}
@@ -106,7 +120,7 @@ export function CartAside({
               <div className="flex items-center gap-1 flex-shrink-0">
                 <Button onClick={() => onUpdateQuantity(item.product.id, item.quantity - 1)} className="w-8 h-8" size="sm" variant="ghost"><Minus size={14} /></Button>
                 <span className="w-8 text-center text-sm font-semibold text-zinc-800 dark:text-zinc-100">{item.quantity}</span>
-                <Button onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8" size="sm" variant="ghost" disabled={item.quantity >= item.product.currentStock}><Plus size={14} /></Button>
+                <Button onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)} className="w-8 h-8" size="sm" variant="ghost" disabled={!isReservation && item.product.productType === "simple" && item.quantity >= item.product.currentStock}><Plus size={14} /></Button>
               </div>
             </div>
           );

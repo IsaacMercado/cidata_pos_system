@@ -39,6 +39,7 @@ export const products = sqliteTable("products", {
   cost: real("cost").notNull().default(0),
   taxRate: real("tax_rate").notNull().default(0),
   unit: text("unit").notNull().default("unit"),
+  productType: text("product_type").notNull().default("simple"),
   minStock: real("min_stock").notNull().default(0),
   currentStock: real("current_stock").notNull().default(0),
   isActive: integer("is_active").notNull().default(1),
@@ -240,11 +241,73 @@ export const restaurantTables = sqliteTable("restaurant_tables", {
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
 
+// ─── Combo Items ────────────────────────────────────────────────────────────
+export const comboItems = sqliteTable("combo_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  comboProductId: integer("combo_product_id").notNull().references(() => products.id),
+  componentProductId: integer("component_product_id").notNull().references(() => products.id),
+  quantity: real("quantity").notNull().default(1),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+// ─── Reservation Rates ─────────────────────────────────────────────────────
+export const reservationRates = sqliteTable("reservation_rates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  guests: integer("guests").notNull().default(1),
+  price: real("price").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+// ─── Reservations ──────────────────────────────────────────────────────────
+export const reservations = sqliteTable("reservations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  saleItemId: integer("sale_item_id").references(() => saleItems.id),
+  checkIn: text("check_in").notNull(),
+  checkOut: text("check_out").notNull(),
+  guests: integer("guests").notNull().default(1),
+  guestPrice: real("guest_price").notNull().default(0),
+  total: real("total").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
 // ─── Relations ───────────────────────────────────────────────────────────────
-export const productsRelations = relations(products, ({ one }) => ({
+export const productsRelations = relations(products, ({ one, many }) => ({
   category: one(categories, {
     fields: [products.categoryId],
     references: [categories.id],
+  }),
+  comboItems: many(comboItems),
+  reservationRates: many(reservationRates),
+}));
+
+export const comboItemsRelations = relations(comboItems, ({ one }) => ({
+  comboProduct: one(products, {
+    fields: [comboItems.comboProductId],
+    references: [products.id],
+  }),
+  componentProduct: one(products, {
+    fields: [comboItems.componentProductId],
+    references: [products.id],
+  }),
+}));
+
+export const reservationRatesRelations = relations(reservationRates, ({ one }) => ({
+  product: one(products, {
+    fields: [reservationRates.productId],
+    references: [products.id],
+  }),
+}));
+
+export const reservationsRelations = relations(reservations, ({ one }) => ({
+  product: one(products, {
+    fields: [reservations.productId],
+    references: [products.id],
+  }),
+  saleItem: one(saleItems, {
+    fields: [reservations.saleItemId],
+    references: [saleItems.id],
   }),
 }));
 

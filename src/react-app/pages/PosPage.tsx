@@ -8,6 +8,7 @@ import { PaymentDialog } from "../components/pos/PaymentDialog";
 import { PosToolbar } from "../components/pos/PosToolbar";
 import { ProductGrid } from "../components/pos/ProductGrid";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
+import { ReservationDialog } from "../components/pos/ReservationDialog";
 import { useToast } from "../components/pos/Toast";
 import { Loading } from "../components/ui";
 
@@ -160,17 +161,67 @@ function PosPageContent() {
 
   const filteredProducts = useMemo(() => {
     const q = search.toLowerCase();
-    return products.filter((p) => {
-      const matchSearch =
-        !search ||
-        p.name.toLowerCase().includes(q) ||
-        p.code?.toLowerCase().includes(q) ||
-        p.barcode?.toLowerCase().includes(q);
-      const matchCategory =
-        !selectedCategory || p.category?.name === selectedCategory;
-      return matchSearch && matchCategory;
-    });
+    return products
+      .filter((p) => {
+        const matchSearch =
+          !search ||
+          p.name.toLowerCase().includes(q) ||
+          p.code?.toLowerCase().includes(q) ||
+          p.barcode?.toLowerCase().includes(q);
+        const matchCategory =
+          !selectedCategory || p.category?.name === selectedCategory;
+        return matchSearch && matchCategory;
+      })
+      .map((p) => {
+        if (p.productType === "combo" && !!p.comboItems) {
+          const mapComboProducts = new Map(
+            p.comboItems.map((sp) => [sp.componentProductId, sp.quantity]),
+          );
+          const maxCombos = products
+            .filter((ip) => mapComboProducts.has(ip.id))
+            .reduce((accumulator, currentValue) => {
+              const required = mapComboProducts.get(currentValue.id);
+              if (!required) return accumulator;
+
+              const possible = Math.floor(currentValue.currentStock / required);
+              if (possible < accumulator) return possible;
+
+              return accumulator;
+            }, Infinity);
+
+          const currentStock = maxCombos === Infinity ? 0 : maxCombos;
+          return { ...p, currentStock } as ProductWithCategory;
+        }
+        return p;
+      });
   }, [products, search, selectedCategory]);
+
+  // ── Reservation dialog state ──
+  const [pendingReservation, setPendingReservation] = useState<{
+    product: ProductWithCategory;
+  } | null>(null);
+
+  function handleAddToCart(product: ProductWithCategory) {
+    if (product.productType === "reservation") {
+      setPendingReservation({ product });
+      return;
+    }
+    addToCart(product);
+  }
+
+  function handleReservationConfirm(data: {
+    checkIn: string;
+    checkOut: string;
+    total: number;
+  }) {
+    if (!pendingReservation) return;
+    addToCart(pendingReservation.product, {
+      checkIn: data.checkIn,
+      checkOut: data.checkOut,
+      total: data.total,
+    });
+    setPendingReservation(null);
+  }
 
   // ── Keyboard shortcuts ──
   const shortcuts: ShortcutConfig[] = useMemo(
@@ -267,7 +318,7 @@ function PosPageContent() {
             products={filteredProducts}
             currency={currency}
             symbol={symbol}
-            onAddToCart={addToCart}
+            onAddToCart={handleAddToCart}
           />
         </main>
 
@@ -294,6 +345,13 @@ function PosPageContent() {
         onAddPaymentSplit={addPaymentSplit}
         onSubmit={submitPayment}
         getMobileError={mobilePaymentError}
+      />
+
+      <ReservationDialog
+        open={!!pendingReservation}
+        product={pendingReservation?.product ?? null}
+        onConfirm={handleReservationConfirm}
+        onClose={() => setPendingReservation(null)}
       />
 
       {receiptSale && (

@@ -30,6 +30,7 @@ import {
   Textarea,
 } from "../components/ui";
 import { api } from "../lib/api";
+import type { ProductWithCategory } from "../lib/types";
 
 const CATEGORY_ICONS: Record<string, typeof Coffee> = {
   Bebidas: Coffee,
@@ -56,6 +57,7 @@ interface FormData {
   barcode: string;
   taxRate: number;
   unit: string;
+  productType: "simple" | "combo" | "reservation";
   minStock: number;
 }
 
@@ -76,12 +78,15 @@ export function ProductsPage() {
     barcode: "",
     taxRate: 0,
     unit: "unit",
+    productType: "simple",
     minStock: 0,
   });
+  const [comboItems, setComboItems] = useState<any[]>([]);
   const [stockDisplay, setStockDisplay] = useState(0);
   const { toast } = useToast();
 
-  const { register, handleSubmit } = useForm<FormData>({ values: formValues });
+  const { register, handleSubmit, watch } = useForm<FormData>({ values: formValues });
+  const productType = watch("productType");
 
   const queryClient = useQueryClient();
 
@@ -129,6 +134,14 @@ export function ProductsPage() {
     }
   }, [productsData]);
 
+  useEffect(() => {
+    if (editingProduct?.id && productType === "combo") {
+      api.comboItems.list(editingProduct.id).then((res) => setComboItems(res || [])).catch(() => {});
+    } else {
+      setComboItems([]);
+    }
+  }, [editingProduct?.id, productType]);
+
   function openNew() {
     setEditingProduct(null);
     setFormValues({
@@ -142,6 +155,7 @@ export function ProductsPage() {
       barcode: "",
       taxRate: 0,
       unit: "unit",
+      productType: "simple",
       minStock: 0,
     });
     setModalOpen(true);
@@ -161,6 +175,7 @@ export function ProductsPage() {
       barcode: product.barcode || "",
       taxRate: product.taxRate || 0,
       unit: product.unit || "unit",
+      productType: product.productType || "simple",
       minStock: product.minStock || 0,
     });
     setModalOpen(true);
@@ -183,18 +198,37 @@ export function ProductsPage() {
         barcode: data.barcode || undefined,
         taxRate: data.taxRate || 0,
         unit: data.unit || "unit",
+        productType: data.productType || "simple",
         minStock: data.minStock || 0,
       };
+      let productId = editingProduct?.id;
       if (editingProduct) {
         await api.products.update(editingProduct.id, payload);
         toast("Producto actualizado", "success");
       } else {
-        await api.products.create({
+        const created = await api.products.create({
           ...payload,
           code: data.code || `PROD-${Date.now()}`,
         });
+        productId = created.id;
         toast("Producto creado", "success");
       }
+
+      // Save combo items
+      if (data.productType === "combo" && productId) {
+        const existing = await api.comboItems.list(productId).catch(() => []);
+        for (const item of existing) {
+          await api.comboItems.remove(item.id).catch(() => {});
+        }
+        for (const item of comboItems) {
+          await api.comboItems.create({
+            comboProductId: productId,
+            componentProductId: item.componentProductId,
+            quantity: item.quantity,
+          }).catch(() => {});
+        }
+      }
+
       closeModal();
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch {
@@ -386,6 +420,16 @@ export function ProductsPage() {
             </div>
 
             <Select
+              label="Tipo de Producto"
+              {...register("productType")}
+              options={[
+                { value: "simple", label: "Simple" },
+                { value: "combo", label: "Combo (paquete)" },
+                { value: "reservation", label: "Reservación" },
+              ]}
+            />
+
+            <Select
               label="Categoría"
               {...register("categoryId")}
               options={categories.map((c: any) => ({
@@ -399,6 +443,14 @@ export function ProductsPage() {
               {...register("description")}
               rows={2}
             />
+
+            {productType === "combo" && (
+              <ComboItemsEditor
+                items={comboItems}
+                allProducts={products}
+                onChange={setComboItems}
+              />
+            )}
           </CardContent>
 
           <CardFooter className="justify-end">
@@ -414,3 +466,71 @@ export function ProductsPage() {
     </div>
   );
 }
+
+// ─── Combo Items Editor ─────────────────────────────────────────────────────
+
+function ComboItemsEditor({
+  items,
+  allProducts,
+  onChange,
+}: {
+  items: any[];
+  allProducts: ProductWithCategory[];
+  onChange: (items: any[]) => void;
+}) {
+  const [componentId, setComponentId] = useState("");
+  const [componentQty, setComponentQty] = useState("1");
+
+  const availableProducts = allProducts.filter(
+    (p) => p.productType === "simple" && !items.find((i) => i.componentProductId === p.id),
+  );
+
+  function addItem() {
+    if (!componentId) return;
+    const prod = allProducts.find((p) => p.id === Number(componentId));
+    if (!prod) return;
+    onChange([...items, { componentProductId: Number(componentId), quantity: Number(componentQty) || 1, productName: prod.name }]);
+    setComponentId("");
+    setComponentQty("1");
+  }
+
+  function removeItem(idx: number) {
+    onChange(items.filter((_, i) => i !== idx));
+  }
+
+  return (
+    <div className="space-y-2 border border-zinc-200 dark:border-zinc-700 rounded-xl p-3">
+      <p className="text-xs font-semibold text-zinc-500 uppercase">Componentes del Combo</p>
+      {items.length === 0 && <p className="text-xs text-zinc-400">Sin componentes. Agrega productos simples al combo.</p>}
+      {items.map((item, idx) => (
+        <div key={idx} className="flex items-center gap-2 text-sm">
+          <span className="flex-1 text-zinc-700">{item.productName || `Producto #${item.componentProductId}`}</span>
+          <span className="text-zinc-500">x{item.quantity}</span>
+          <button onClick={() => removeItem(idx)} className="text-red-500 hover:text-red-700 text-xs">✕</button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <select
+          value={componentId}
+          onChange={(e) => setComponentId(e.currentTarget.value)}
+          className="flex-1 text-sm border border-zinc-300 rounded-lg px-2 py-1.5 bg-white"
+        >
+          <option value="">Seleccionar producto...</option>
+          {availableProducts.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min="1"
+          value={componentQty}
+          onChange={(e) => setComponentQty(e.currentTarget.value)}
+          className="w-16 text-sm border border-zinc-300 rounded-lg px-2 py-1.5 text-center"
+        />
+        <Button onClick={addItem} size="sm" disabled={!componentId}><Plus size={14} /></Button>
+      </div>
+    </div>
+  );
+}
+
+

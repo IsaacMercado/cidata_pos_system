@@ -68,6 +68,26 @@ export const api = {
       request<{ success: boolean }>(`/products/${id}`, { method: "DELETE" }),
   },
 
+  comboItems: {
+    list: (productId: number) =>
+      request<any[]>(`/combo-items/${productId}`),
+
+    create: (data: { comboProductId: number; componentProductId: number; quantity: number }) =>
+      request<any>("/combo-items", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: number, data: { comboProductId: number; componentProductId: number; quantity: number }) =>
+      request<any>(`/combo-items/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    remove: (id: number) =>
+      request<{ success: boolean }>(`/combo-items/${id}`, { method: "DELETE" }),
+  },
+
   customers: {
     list: (params?: { search?: string }) =>
       request<Customer[]>(
@@ -196,6 +216,8 @@ export const api = {
         method: "DELETE",
       }),
   },
+
+
 
   exchange: {
     get: () => request<Record<string, number>>("/exchange-rate"),

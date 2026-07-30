@@ -39,15 +39,18 @@ interface ProductCardProps {
 function ProductCard({ product, currency, symbol, onAddToCart }: ProductCardProps) {
   const priceDisplay = priceInCurrency(product, currency);
   const Icon = getCategoryIcon(product.category?.name ?? "");
-
-  // Show USD equivalent when viewing in another currency
   const showUsdEquiv = currency !== "USD";
   const usdPrice = product.price;
+  const isDisabled = product.currentStock <= 0 && product.productType === "simple";
+  const isReservation = product.productType === "reservation";
+  const isCombo = product.productType === "combo";
+
+  const typeLabel = isReservation ? "Reserva" : isCombo ? "Combo" : null;
 
   return (
     <button
       onClick={() => onAddToCart(product)}
-      disabled={product.currentStock <= 0}
+      disabled={isDisabled}
       className="group flex flex-col items-center justify-center p-3 sm:p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-center hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md hover:shadow-indigo-100/50 dark:hover:shadow-indigo-900/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[120px] sm:min-h-[140px]"
     >
       <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
@@ -58,28 +61,37 @@ function ProductCard({ product, currency, symbol, onAddToCart }: ProductCardProp
         {product.name}
       </span>
 
-      {/* Primary price in selected currency */}
+      {typeLabel && (
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 ${
+          isReservation
+            ? "text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/30"
+            : "text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/30"
+        }`}>
+          {typeLabel}
+        </span>
+      )}
+
       <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
         {symbol}{priceDisplay.toFixed(2)}
       </span>
 
-      {/* USD equivalent when viewing in another currency */}
       {showUsdEquiv && (
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
           ${usdPrice.toFixed(2)} USD
         </span>
       )}
 
-      {/* Stock */}
-      <span className={`text-[10px] px-1.5 py-0.5 rounded mt-1 ${
-        product.currentStock <= 0
-          ? "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30"
-          : product.minStock > 0 && product.currentStock <= product.minStock
-            ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30"
-            : "text-zinc-400 dark:text-zinc-500"
-      }`} title={product.minStock > 0 ? `Stock mínimo: ${product.minStock}` : undefined}>
-        {product.currentStock > 0 ? `${product.currentStock} uds.` : "Agotado"}
-      </span>
+      {!isReservation && (
+        <span className={`text-[10px] px-1.5 py-0.5 rounded mt-1 ${
+          product.currentStock <= 0
+            ? "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30"
+            : product.minStock > 0 && product.currentStock <= product.minStock
+              ? "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30"
+              : "text-zinc-400 dark:text-zinc-500"
+        }`} title={product.minStock > 0 ? `Stock mínimo: ${product.minStock}` : undefined}>
+          {product.currentStock > 0 ? `${product.currentStock} uds.` : "Agotado"}
+        </span>
+      )}
     </button>
   );
 }

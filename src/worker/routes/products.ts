@@ -17,6 +17,7 @@ const createSchema = z.object({
   cost: z.number().min(0).default(0),
   taxRate: z.number().min(0).default(0),
   unit: z.string().default("unit"),
+  productType: z.enum(["simple", "combo", "reservation"]).default("simple"),
   minStock: z.number().min(0).default(0),
   currentStock: z.number().min(0).default(0),
 });
@@ -31,6 +32,7 @@ const updateSchema = z.object({
   cost: z.number().min(0).optional(),
   taxRate: z.number().min(0).optional(),
   unit: z.string().optional(),
+  productType: z.enum(["simple", "combo", "reservation"]).optional(),
   minStock: z.number().min(0).optional(),
   currentStock: z.number().min(0).optional(),
   isActive: z.number().min(0).max(1).optional(),

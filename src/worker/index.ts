@@ -3,12 +3,14 @@ import { cors } from "hono/cors";
 import { createDb } from "./db";
 import { middlewareJwtPayload } from "./lib/auth";
 import authRouter from "./routes/auth";
+import comboItemsRouter from "./routes/combo-items";
 import customersRouter from "./routes/customers";
 import exchangeRouter from "./routes/exchange";
 import inventoryRouter from "./routes/inventory";
 import productsRouter from "./routes/products";
 import purchasesRouter from "./routes/purchases";
 import replicateRouter from "./routes/replicate";
+import reservationRatesRouter from "./routes/reservation-rates";
 import restaurantsRouter from "./routes/restaurants";
 import salesRouter from "./routes/sales";
 
@@ -91,6 +93,8 @@ app.get("/health", (c) =>
 );
 
 app.route("/api/products", productsRouter);
+app.route("/api/combo-items", comboItemsRouter);
+app.route("/api/reservation-rates", reservationRatesRouter);
 app.route("/api/sales", salesRouter);
 app.route("/api/customers", customersRouter);
 app.route("/api/inventory", inventoryRouter);

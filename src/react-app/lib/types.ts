@@ -15,6 +15,8 @@ export interface ProductRate {
   fetchedAt: string;
 }
 
+export type ProductType = "simple" | "combo" | "reservation";
+
 export interface Product {
   id: number;
   code: string;
@@ -26,10 +28,12 @@ export interface Product {
   cost: number;
   taxRate: number;
   unit: string;
+  productType: ProductType;
   minStock: number;
   currentStock: number;
   isActive: number;
   rates?: ProductRate[];
+  comboItems?: Array<{ componentProductId: number; quantity: number }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,4 +115,9 @@ export interface SaleWithItems extends Sale {
 export interface CartItem {
   product: ProductWithCategory;
   quantity: number;
+  reservation?: {
+    checkIn: string;
+    checkOut: string;
+    total: number;
+  };
 }

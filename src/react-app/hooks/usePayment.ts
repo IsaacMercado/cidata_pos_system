@@ -22,13 +22,22 @@ export const PAYMENT_METHOD_MOBILE_ID = 4;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
-function toPosCurrency(amount: number, from: string, to: string, rateMap: Record<string, number>): number {
+function toPosCurrency(
+  amount: number,
+  from: string,
+  to: string,
+  rateMap: Record<string, number>,
+): number {
   const fromRate = rateMap[from] || 1;
   const toRate = rateMap[to] || 1;
-  return amount * toRate / fromRate;
+  return (amount * toRate) / fromRate;
 }
 
-function toUsd(amount: number, currency: string, rateMap: Record<string, number>): number {
+function toUsd(
+  amount: number,
+  currency: string,
+  rateMap: Record<string, number>,
+): number {
   return toPosCurrency(amount, currency, "USD", rateMap);
 }
 
@@ -42,7 +51,13 @@ interface UsePaymentOptions {
   onPaid: () => void;
 }
 
-export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: UsePaymentOptions) {
+export function usePayment({
+  totalDisplay,
+  currency,
+  items,
+  rateMap,
+  onPaid,
+}: UsePaymentOptions) {
   const { toast } = useToast();
 
   const [payDialog, setPayDialog] = useState(false);
@@ -51,7 +66,18 @@ export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: U
   const [payments, setPayments] = useState<PaymentInput[]>([]);
 
   const paymentsTotal = useMemo(
-    () => payments.reduce((sum, p) => sum + toPosCurrency(parseFloat(p.amount) || 0, p.currency, currency, rateMap), 0),
+    () =>
+      payments.reduce(
+        (sum, p) =>
+          sum +
+          toPosCurrency(
+            parseFloat(p.amount) || 0,
+            p.currency,
+            currency,
+            rateMap,
+          ),
+        0,
+      ),
     [payments, currency, rateMap],
   );
   const paymentDiff = totalDisplay - paymentsTotal;
@@ -60,46 +86,59 @@ export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: U
 
   const openPayDialog = useCallback(() => {
     if (items.length === 0) return;
-    setPayments([{
-      methodId: 1,
-      amount: totalDisplay.toFixed(2),
-      currency,
-      reference: "",
-      paymentDate: today(),
-      phone: "",
-    }]);
+    setPayments([
+      {
+        methodId: 1,
+        amount: totalDisplay.toFixed(2),
+        currency,
+        reference: "",
+        paymentDate: today(),
+        phone: "",
+      },
+    ]);
     setPayDialog(true);
   }, [items.length, totalDisplay, currency]);
 
   const addPaymentSplit = useCallback(() => {
     const remaining = totalDisplay - paymentsTotal;
     if (remaining > 0.01) {
-      setPayments((prev) => [...prev, {
-        methodId: 1,
-        amount: remaining.toFixed(2),
-        currency,
-        reference: "",
-        paymentDate: today(),
-        phone: "",
-      }]);
+      setPayments((prev) => [
+        ...prev,
+        {
+          methodId: 1,
+          amount: remaining.toFixed(2),
+          currency,
+          reference: "",
+          paymentDate: today(),
+          phone: "",
+        },
+      ]);
     }
   }, [totalDisplay, paymentsTotal, currency]);
 
-  const updatePayment = useCallback((index: number, field: keyof PaymentInput, value: string | number) => {
-    setPayments((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)));
-  }, []);
+  const updatePayment = useCallback(
+    (index: number, field: keyof PaymentInput, value: string | number) => {
+      setPayments((prev) =>
+        prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)),
+      );
+    },
+    [],
+  );
 
   const removePayment = useCallback((index: number) => {
     setPayments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const mobilePaymentError = useCallback((payment: PaymentInput): string | null => {
-    if (payment.methodId !== PAYMENT_METHOD_MOBILE_ID) return null;
-    if (!payment.reference) return "Referencia requerida";
-    if (!payment.paymentDate) return "Fecha requerida";
-    if (!payment.phone) return "Teléfono requerido";
-    return null;
-  }, []);
+  const mobilePaymentError = useCallback(
+    (payment: PaymentInput): string | null => {
+      if (payment.methodId !== PAYMENT_METHOD_MOBILE_ID) return null;
+      if (!payment.reference) return "Referencia requerida";
+      if (!payment.paymentDate) return "Fecha requerida";
+      if (!payment.phone) return "Teléfono requerido";
+      return null;
+    },
+    [],
+  );
 
   const submitPayment = useCallback(async () => {
     if (Math.abs(paymentDiff) > PAYMENT_DIFF_TOLERANCE || submitting) return;
@@ -145,7 +184,19 @@ export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: U
     const total = Math.round((subtotal - discountTotal + taxTotal) * 100) / 100;
 
     const validPayments = payments.filter((p) => parseFloat(p.amount) > 0);
-    const totalPaymentsUsd = validPayments.reduce((s, p) => s + toUsd(parseFloat(p.amount), p.currency, rateMap), 0);
+    const totalPaymentsUsd = validPayments.reduce(
+      (s, p) => s + toUsd(parseFloat(p.amount), p.currency, rateMap),
+      0,
+    );
+
+    const reservationData = items
+      .filter((item) => item.reservation)
+      .map((item) => ({
+        productId: item.product.id,
+        checkIn: item.reservation!.checkIn,
+        checkOut: item.reservation!.checkOut,
+        total: item.reservation!.total,
+      }));
 
     const saleDoc: SaleDoc = {
       rxid: clientId,
@@ -162,11 +213,18 @@ export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: U
       status: "completed",
       notes: null,
       items: saleItems,
+      ...(reservationData.length > 0 ? { reservations: reservationData } : {}),
       payments: validPayments.map((p) => ({
         paymentMethodId: p.methodId,
-        amount: totalPaymentsUsd > 0
-          ? Math.round(total * (toUsd(parseFloat(p.amount), p.currency, rateMap) / totalPaymentsUsd) * 100) / 100
-          : 0,
+        amount:
+          totalPaymentsUsd > 0
+            ? Math.round(
+                total *
+                  (toUsd(parseFloat(p.amount), p.currency, rateMap) /
+                    totalPaymentsUsd) *
+                  100,
+              ) / 100
+            : 0,
         currency: "USD",
         reference: p.reference || null,
         paymentDate: p.paymentDate || null,
@@ -209,9 +267,29 @@ export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: U
     await db.sales.insert(saleDoc);
 
     for (const item of saleItems) {
-      const productDoc = await db.products.findOne(String(item.productId)).exec();
+      const productDoc = await db.products
+        .findOne(String(item.productId))
+        .exec();
       if (productDoc) {
-        await productDoc.incrementalPatch({ currentStock: productDoc.currentStock - item.quantity });
+        if (productDoc.productType === "combo") {
+          if (!!productDoc.comboItems) {
+            for (let comboItemKey in productDoc.comboItems) {
+              const comboItem = productDoc.comboItems[comboItemKey];
+              const comboItemProduct = await db.products
+                .findOne(String(comboItem.componentProductId))
+                .exec();
+              if (!comboItemProduct) continue;
+              await comboItemProduct.incrementalPatch({
+                currentStock:
+                  comboItemProduct.currentStock - comboItem.quantity,
+              });
+            }
+          }
+        } else {
+          await productDoc.incrementalPatch({
+            currentStock: productDoc.currentStock - item.quantity,
+          });
+        }
       }
     }
 
@@ -223,7 +301,16 @@ export function usePayment({ totalDisplay, currency, items, rateMap, onPaid }: U
     });
     onPaid();
     setSubmitting(false);
-  }, [paymentDiff, submitting, payments, items, rateMap, mobilePaymentError, toast, onPaid]);
+  }, [
+    paymentDiff,
+    submitting,
+    payments,
+    items,
+    rateMap,
+    mobilePaymentError,
+    toast,
+    onPaid,
+  ]);
 
   return {
     payDialog,

@@ -2,8 +2,10 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   categories,
+  comboItems,
   exchangeRates,
   products,
+  reservations,
   restaurantTables,
   restaurants,
   saleItems,
@@ -103,6 +105,22 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
         }
       }
 
+      // Fetch all combo_items for product enrichment
+      const allComboItems = await db
+        .select({
+          comboProductId: comboItems.comboProductId,
+          componentProductId: comboItems.componentProductId,
+          quantity: comboItems.quantity,
+        })
+        .from(comboItems)
+        .all();
+      const comboByProduct = new Map<number, Array<{ componentProductId: number; quantity: number }>>();
+      for (const ci of allComboItems) {
+        const list = comboByProduct.get(ci.comboProductId) ?? [];
+        list.push({ componentProductId: ci.componentProductId, quantity: ci.quantity });
+        comboByProduct.set(ci.comboProductId, list);
+      }
+
       return rows.map((row) => ({
         ...row,
         _rates: Array.from(rateMap.entries()).map(([code, data]) => ({
@@ -111,6 +129,7 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
           rate: +(data.rate * row.products.price).toFixed(2),
           fetchedAt: data.fetchedAt,
         })),
+        _comboItems: comboByProduct.get(row.products.id) ?? [],
       }));
     },
     transform: (row) => ({
@@ -126,12 +145,14 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
       cost: row.products.cost,
       taxRate: row.products.taxRate,
       unit: row.products.unit,
+      productType: row.products.productType,
       minStock: row.products.minStock,
       currentStock: row.products.currentStock,
       isActive: row.products.isActive,
       createdAt: row.products.createdAt,
       updatedAt: row.products.updatedAt,
       rates: row._rates ?? [],
+      comboItems: row._comboItems ?? [],
       _deleted: false,
     }),
   },
@@ -155,6 +176,7 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
         .limit(limit),
     transform: (row) => ({ ...row, rxid: String(row.id), _deleted: false }),
   },
+
   operators: {
     query: (db, cpUpdated, cpId, limit) =>
       db
@@ -228,6 +250,14 @@ app.post("/:collection/push", async (c) => {
     tableId?: number;
     notes?: string;
     status?: string;
+    reservations?: Array<{
+      productId: number;
+      checkIn: string;
+      checkOut: string;
+      guests: number;
+      guestPrice: number;
+      total: number;
+    }>;
   } = await c.req.json();
 
   try {
@@ -311,6 +341,21 @@ app.post("/:collection/push", async (c) => {
             paymentDate: pay.paymentDate ?? null,
             phone: pay.phone ?? null,
             amountUsd: Math.round(amountUsd * 100) / 100,
+          })
+          .run();
+      }
+    }
+
+    if (body.reservations && body.reservations.length > 0) {
+      for (const res of body.reservations) {
+        await db
+          .insert(reservations)
+          .values({
+            productId: res.productId,
+            saleItemId: saleId,
+            checkIn: res.checkIn,
+            checkOut: res.checkOut,
+            total: res.total,
           })
           .run();
       }

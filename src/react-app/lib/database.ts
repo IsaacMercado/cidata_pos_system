@@ -1,14 +1,19 @@
-import { addRxPlugin, createRxDatabase, removeRxDatabase, type RxDatabase, type RxJsonSchema, type RxCollection } from "rxdb";
+import {
+  addRxPlugin,
+  createRxDatabase,
+  removeRxDatabase,
+  type RxDatabase,
+  type RxJsonSchema,
+  type RxCollection,
+} from "rxdb";
 import { RxDBDevModePlugin } from "rxdb/plugins/dev-mode";
 import { RxDBLeaderElectionPlugin } from "rxdb/plugins/leader-election";
-import { RxDBMigrationSchemaPlugin } from "rxdb/plugins/migration-schema";
 import { replicateRxCollection } from "rxdb/plugins/replication";
 import { getRxStorageDexie } from "rxdb/plugins/storage-dexie";
 import { wrappedValidateAjvStorage } from "rxdb/plugins/validate-ajv";
 import { loadSession } from "./session";
 
 addRxPlugin(RxDBLeaderElectionPlugin);
-addRxPlugin(RxDBMigrationSchemaPlugin);
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -17,6 +22,11 @@ export interface ProductRate {
   name: string;
   rate: number;
   fetchedAt: string;
+}
+
+export interface ComboItemRef {
+  componentProductId: number;
+  quantity: number;
 }
 
 export interface ProductDoc {
@@ -32,10 +42,12 @@ export interface ProductDoc {
   cost: number;
   taxRate: number;
   unit: string;
+  productType: string;
   minStock: number;
   currentStock: number;
   isActive: number;
   rates: ProductRate[];
+  comboItems: ComboItemRef[];
   createdAt: string;
   updatedAt: string;
   _deleted: boolean;
@@ -86,6 +98,13 @@ export interface SalePaymentData {
   phone?: string | null;
 }
 
+export interface ReservationData {
+  productId: number;
+  checkIn: string;
+  checkOut: string;
+  total: number;
+}
+
 export interface SaleDoc {
   rxid: string;
   clientId: string;
@@ -102,6 +121,7 @@ export interface SaleDoc {
   notes: string | null;
   items: SaleItemData[];
   payments: SalePaymentData[];
+  reservations?: ReservationData[];
   syncStatus: string;
   receiptNumber: string | null;
   createdAt: string;
@@ -123,7 +143,7 @@ export interface OperatorDoc {
 
 const productSchema: RxJsonSchema<ProductDoc> = {
   title: "product",
-  version: 5,
+  version: 0,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -139,6 +159,7 @@ const productSchema: RxJsonSchema<ProductDoc> = {
     cost: { type: "number" },
     taxRate: { type: "number" },
     unit: { type: "string" },
+    productType: { type: "string", default: "simple" },
     minStock: { type: "number" },
     currentStock: { type: "number" },
     isActive: { type: "number", multipleOf: 1, minimum: 0, maximum: 1 },
@@ -155,6 +176,17 @@ const productSchema: RxJsonSchema<ProductDoc> = {
         },
       },
     },
+    comboItems: {
+      type: "array",
+      default: [],
+      items: {
+        type: "object",
+        properties: {
+          componentProductId: { type: "number" },
+          quantity: { type: "number" },
+        },
+      },
+    },
     createdAt: { type: "string" },
     updatedAt: { type: "string" },
     _deleted: { type: "boolean", default: false },
@@ -165,7 +197,7 @@ const productSchema: RxJsonSchema<ProductDoc> = {
 
 const restaurantSchema: RxJsonSchema<RestaurantDoc> = {
   title: "restaurant",
-  version: 4,
+  version: 0,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -183,13 +215,18 @@ const restaurantSchema: RxJsonSchema<RestaurantDoc> = {
 
 const restaurantTableSchema: RxJsonSchema<RestaurantTableDoc> = {
   title: "restaurant_table",
-  version: 4,
+  version: 0,
   primaryKey: "rxid",
   type: "object",
   properties: {
     rxid: { type: "string", maxLength: 36 },
     id: { type: "number" },
-    restaurantId: { type: "number", multipleOf: 1, minimum: 1, maximum: 999999 },
+    restaurantId: {
+      type: "number",
+      multipleOf: 1,
+      minimum: 1,
+      maximum: 999999,
+    },
     name: { type: "string" },
     capacity: { type: "number" },
     status: { type: "string" },
@@ -209,7 +246,7 @@ const restaurantTableSchema: RxJsonSchema<RestaurantTableDoc> = {
 
 const operatorSchema: RxJsonSchema<OperatorDoc> = {
   title: "operator",
-  version: 4,
+  version: 0,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -223,13 +260,22 @@ const operatorSchema: RxJsonSchema<OperatorDoc> = {
     updatedAt: { type: "string" },
     _deleted: { type: "boolean", default: false },
   },
-  required: ["rxid", "id", "username", "name", "role", "isSuperuser", "pinHash", "updatedAt"],
+  required: [
+    "rxid",
+    "id",
+    "username",
+    "name",
+    "role",
+    "isSuperuser",
+    "pinHash",
+    "updatedAt",
+  ],
   indexes: ["username"],
 };
 
 const saleSchema: RxJsonSchema<SaleDoc> = {
   title: "sale",
-  version: 1,
+  version: 0,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -274,13 +320,38 @@ const saleSchema: RxJsonSchema<SaleDoc> = {
         },
       },
     },
+    reservations: {
+      type: "array",
+      default: [],
+      items: {
+        type: "object",
+        properties: {
+          productId: { type: "number" },
+          checkIn: { type: "string" },
+          checkOut: { type: "string" },
+          total: { type: "number" },
+        },
+        required: ["productId", "checkIn", "checkOut", "total"],
+      },
+    },
     syncStatus: { type: "string", maxLength: 20 },
     receiptNumber: { type: ["string", "null"], maxLength: 50 },
     createdAt: { type: "string", maxLength: 30 },
     updatedAt: { type: "string", maxLength: 30 },
     _deleted: { type: "boolean", default: false },
   },
-  required: ["rxid", "clientId", "subtotal", "taxTotal", "discountTotal", "total", "status", "syncStatus", "createdAt", "updatedAt"],
+  required: [
+    "rxid",
+    "clientId",
+    "subtotal",
+    "taxTotal",
+    "discountTotal",
+    "total",
+    "status",
+    "syncStatus",
+    "createdAt",
+    "updatedAt",
+  ],
   indexes: [["syncStatus"], ["createdAt"]],
 };
 
@@ -301,68 +372,52 @@ function makeStorage() {
 }
 
 const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
-    if (import.meta.env.DEV) addRxPlugin(RxDBDevModePlugin);
+  if (import.meta.env.DEV) addRxPlugin(RxDBDevModePlugin);
 
-    const db = await createRxDatabase<RxCollections>({
-        name: DB_NAME,
-        storage: makeStorage(),
-        multiInstance: true,
-        eventReduce: true,
-        ignoreDuplicate: true,
-    });
+  const db = await createRxDatabase<RxCollections>({
+    name: DB_NAME,
+    storage: makeStorage(),
+    multiInstance: true,
+    eventReduce: true,
+    ignoreDuplicate: true,
+  });
 
-    db.waitForLeadership().then(() => {
-        console.log('isLeader now');
-    });
+  db.waitForLeadership().then(() => {
+    console.log("isLeader now");
+  });
 
-    await db.addCollections({
-      products: {
-        schema: productSchema,
-        migrationStrategies: {
-          1: (d) => d,
-          2: (d) => d,
-          3: (d) => d,
-          4: (d) => d,
-          5: (d) => ({ ...d, rates: Array.isArray((d as any).rates) ? (d as any).rates : [] }),
-        },
-      },
-      restaurants: {
-        schema: restaurantSchema,
-        migrationStrategies: { 1: (d) => d, 2: (d) => d, 3: (d) => d, 4: (d) => d },
-      },
-      restaurant_tables: {
-        schema: restaurantTableSchema,
-        migrationStrategies: { 1: (d) => d, 2: (d) => d, 3: (d) => d, 4: (d) => d },
-      },
-      operators: {
-        schema: operatorSchema,
-        migrationStrategies: { 1: (d) => d, 2: (d) => d, 3: (d) => d, 4: (d) => d },
-      },
-      sales: {
-        schema: saleSchema,
-        migrationStrategies: { 1: (d) => d },
-      },
-    });
+  await db.addCollections({
+    products: { schema: productSchema },
+    restaurants: { schema: restaurantSchema },
+    restaurant_tables: { schema: restaurantTableSchema },
+    operators: { schema: operatorSchema },
+    sales: { schema: saleSchema },
+  });
 
-    startReplication(db.products, "products");
-    startReplication(db.restaurants, "restaurants");
-    startReplication(db.restaurant_tables, "restaurant_tables");
-    startReplication(db.operators, "operators");
-    startPushReplication(db.sales, "sales");
+  startReplication(db.products, "products");
+  startReplication(db.restaurants, "restaurants");
+  startReplication(db.restaurant_tables, "restaurant_tables");
+  startReplication(db.operators, "operators");
+  startPushReplication(db.sales, "sales");
 
-    return db;
-  };
+  return db;
+};
 
-const DB_INIT_VERSION = "3";
+const DB_INIT_VERSION = "0";
 
 // The local DB is only a refillable cache. On init version bump, wipe and recreate
 // so the pull replication re-fetches all data with the latest schema.
 const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
-  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("rxdb:init") : null;
+  const stored =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("rxdb:init")
+      : null;
   if (stored !== DB_INIT_VERSION) {
     try {
       await removeRxDatabase(DB_NAME, getRxStorageDexie());
-    } catch { /* might not exist yet */ }
+    } catch {
+      /* might not exist yet */
+    }
     localStorage.setItem("rxdb:init", DB_INIT_VERSION);
   }
 
@@ -372,8 +427,13 @@ const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
     } catch (err) {
       const rxErr = err as any;
       if (attempt === 0) {
-        console.warn("RxDB init error — recreating cache DB:", rxErr?.code ?? rxErr?.message);
-        try { await removeRxDatabase(DB_NAME, getRxStorageDexie()); } catch {}
+        console.warn(
+          "RxDB init error — recreating cache DB:",
+          rxErr?.code ?? rxErr?.message,
+        );
+        try {
+          await removeRxDatabase(DB_NAME, getRxStorageDexie());
+        } catch {}
         continue;
       }
       throw err;
@@ -384,7 +444,9 @@ const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
 
 function authHeaders(): HeadersInit {
   const session = loadSession();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (session?.token) headers["Authorization"] = `Bearer ${session.token}`;
   return headers;
 }
@@ -402,10 +464,16 @@ function startReplication(collection: RxCollection<any>, name: string) {
           method: "POST",
           headers: authHeaders(),
           credentials: "include",
-          body: JSON.stringify({ checkpoint: checkpoint ?? null, limit: batchSize }),
+          body: JSON.stringify({
+            checkpoint: checkpoint ?? null,
+            limit: batchSize,
+          }),
         });
         const data = await res.json();
-        return { documents: data.documents ?? [], checkpoint: data.checkpoint ?? null };
+        return {
+          documents: data.documents ?? [],
+          checkpoint: data.checkpoint ?? null,
+        };
       },
     },
   });
@@ -421,8 +489,11 @@ function startPushReplication(collection: RxCollection<any>, name: string) {
     push: {
       handler: async (documents: any[]) => {
         const session = loadSession();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (session?.token) headers["Authorization"] = `Bearer ${session.token}`;
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (session?.token)
+          headers["Authorization"] = `Bearer ${session.token}`;
 
         const results: any[] = [];
         for (const doc of documents) {
@@ -442,6 +513,7 @@ function startPushReplication(collection: RxCollection<any>, name: string) {
                 tableId: docData.tableId,
                 notes: docData.notes,
                 status: docData.status,
+                reservations: docData.reservations,
               }),
             });
             const responseData = await res.json();
@@ -471,11 +543,11 @@ export async function resetDatabase() {
 }
 
 export const getDatabase = (): Promise<RxDatabase<RxCollections>> => {
-    if (!dbPromise) {
-        dbPromise = getDatabaseInner().catch((e) => {
-            dbPromise = null;
-            throw e;
-        });
-    }
-    return dbPromise;
+  if (!dbPromise) {
+    dbPromise = getDatabaseInner().catch((e) => {
+      dbPromise = null;
+      throw e;
+    });
+  }
+  return dbPromise;
 };

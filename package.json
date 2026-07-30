@@ -27,6 +27,7 @@
     "drizzle-orm": "^0.41.0",
     "hono": "^4.7.0",
     "lucide-react": "^1.23.0",
+    "onscan.js": "^1.5.2",
     "preact": "^10.26.0",
     "react-hook-form": "^7.81.0",
     "rxdb": "^17.3.0",
