@@ -17,93 +17,91 @@ import os
 import re
 import ssl
 import sys
-from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 API_URL = os.getenv("POS_API_URL", "http://localhost:8787")
 BCV_URL = "https://www.bcv.org.ve/"
 
+# Cloudflare blocks requests with a Python-ish User-Agent (returns HTTP 403
+# "error code: 1010"). Use a normal browser UA so API calls go through.
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-class BCVRateParser(HTMLParser):
-    """Parse BCV HTML to extract USD/VES rate using html.parser (stdlib)."""
 
-    def __init__(self):
-        super().__init__()
-        self.in_span = False
-        self.in_strong = False
-        self.span_text = ""
-        self.rates = {}
-        self._current_currency = None
-
-    def handle_starttag(self, tag, attrs):
-        attrs_dict = dict(attrs)
-        if tag == "span":
-            self.in_span = True
-            self.span_text = ""
-        elif tag == "strong" and self.in_span:
-            self.in_strong = True
-
-    def handle_endtag(self, tag):
-        if tag == "span":
-            self.in_span = False
-            # Check if this span contained a currency code
-            text = self.span_text.strip().upper()
-            if text in ("USD", "EUR"):
-                self._current_currency = text
-        elif tag == "strong":
-            self.in_strong = False
-
-    def handle_data(self, data):
-        if self.in_span:
-            self.span_text += data
-        elif self.in_strong and self._current_currency:
-            # This strong tag contains the rate value
-            value_str = data.strip().replace(",", ".")
-            try:
-                rate = float(value_str)
-                if rate > 0:
-                    self.rates[self._current_currency] = rate
-            except ValueError:
-                pass
-            self._current_currency = None
+# Maps BCV HTML container ids (and the currency label inside their <span>) to
+# the currency code we send to the API. The BCV page wraps each rate in a div
+# with id="dolar", id="euro", etc. containing <strong class="strong-tb">value</strong>.
+BCV_CURRENCY_BLOCKS = {
+    "dolar": "USD",
+    "euro": "EUR",
+}
 
 
 def scrape_bcv() -> dict[str, float]:
-    """Fetch BCV page and parse exchange rates."""
+    """Fetch BCV page and parse exchange rates using regex.
+
+    The BCV page structure is:
+        <div id="dolar" ...>
+            ...
+            <strong class="strong-tb">745,63710000</strong>
+            ...
+        </div>
+    Regex based parsing is more resilient to BCV markup tweaks than a strict
+    HTML tags/state-machine parser. Only stdlib is used.
+    """
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
     try:
-        req = Request(
-            BCV_URL, headers={"User-Agent": "Mozilla/5.0 (compatible; POS-Bot/1.0)"}
-        )
+        req = Request(BCV_URL, headers={"User-Agent": USER_AGENT})
         with urlopen(req, context=ctx, timeout=15) as resp:
             html = resp.read().decode("utf-8", errors="replace")
     except Exception as e:
         print(f"Error al conectar con BCV: {e}", file=sys.stderr)
         return {}
 
-    parser = BCVRateParser()
-    try:
-        parser.feed(html)
-    except Exception as e:
-        print(f"Error parseando HTML del BCV: {e}", file=sys.stderr)
-        return {}
+    rates: dict[str, float] = {}
+    for block_id, currency in BCV_CURRENCY_BLOCKS.items():
+        # Capture from the currency block opening tag until the first strong inside it.
+        pattern = re.compile(
+            rf'id="{block_id}"[^>]*>.*?<strong[^>]*>\s*([\d.,]+)\s*</strong>',
+            re.DOTALL | re.IGNORECASE,
+        )
+        match = pattern.search(html)
+        if not match:
+            print(
+                f"  {currency}/VES: no se encontró el bloque '{block_id}'",
+                file=sys.stderr,
+            )
+            continue
 
-    return parser.rates
+        value_str = match.group(1).replace(".", "").replace(",", ".")
+        try:
+            rate = float(value_str)
+            if rate > 0:
+                rates[currency] = rate
+        except ValueError:
+            print(
+                f"  {currency}/VES: valor no numérico '{match.group(1)}'",
+                file=sys.stderr,
+            )
+
+    return rates
 
 
 def login(api_url: str, email: str, password: str) -> str | None:
     """Authenticate and return JWT token."""
-    url = f"{api_url}/api/auth/login"
+    url = f"{api_url}/api/login"
     body = json.dumps({"email": email, "password": password}).encode("utf-8")
 
     req = Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
 
@@ -139,6 +137,7 @@ def send_rate(api_url: str, token: str, currency: str, rate: float) -> bool:
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
+            "User-Agent": USER_AGENT,
         },
         method="POST",
     )
@@ -167,13 +166,19 @@ def send_rate(api_url: str, token: str, currency: str, rate: float) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Actualizar tasa de cambio BCV en POS")
     parser.add_argument(
-        "--url", default=API_URL, help="URL base de la API (default: %(default)s)"
+        "--url",
+        default=API_URL,
+        help="URL base de la API (default: %(default)s)",
     )
     parser.add_argument(
-        "--email", default=os.getenv("POS_EMAIL"), help="Email para login"
+        "--email",
+        default=os.getenv("POS_EMAIL"),
+        help="Email para login",
     )
     parser.add_argument(
-        "--password", default=os.getenv("POS_PASSWORD"), help="Password para login"
+        "--password",
+        default=os.getenv("POS_PASSWORD"),
+        help="Password para login",
     )
     args = parser.parse_args()
 

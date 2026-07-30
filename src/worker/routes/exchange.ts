@@ -1,6 +1,6 @@
 import { eq, getTableColumns, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { exchangeRates } from "../db/schema";
+import { exchangeRates, products } from "../db/schema";
 import type { Env } from "../index";
 
 const app = new Hono<Env>();
@@ -44,6 +44,18 @@ app.post("/", async (c) => {
     currencyTo: body.currencyTo,
     rate: body.rate,
   }).run();
+
+  // When a rate changes, the cached `rates` field on every product in RxDB becomes
+  // stale (replicate.ts embeds the latest rate into each product document). "Touch"
+  // all products so their updated_at bumps and the incremental replication re-pushes
+  // the full product list to clients with the new rate baked in. The
+  // trg_products_after_update trigger refreshes updated_at automatically.
+  if (body.currencyFrom === "USD" || body.currencyFrom === "EUR") {
+    await db
+      .update(products)
+      .set({ updatedAt: sql`datetime('now')` })
+      .run();
+  }
 
   return c.json({ success: true });
 });

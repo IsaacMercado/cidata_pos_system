@@ -93,8 +93,6 @@ auth.post("/login", async (c) => {
     .where(eq(userPermissions.userId, user.id))
     .all();
 
-  console.log(user, perms)
-
   return c.json({
     user: { ...publicUser, permissions: perms.map((p) => p.screen) },
     token,
