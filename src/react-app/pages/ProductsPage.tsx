@@ -304,7 +304,6 @@ export function ProductsPage() {
                           : "success"
                     }
                     dot
-                    title={p.minStock > 0 ? `Stock mínimo: ${p.minStock}` : undefined}
                   >
                     {p.currentStock}
                     {p.minStock > 0 && (

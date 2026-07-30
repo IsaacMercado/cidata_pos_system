@@ -13,14 +13,13 @@ Uses only stdlib — no pip dependencies required.
 
 import argparse
 import json
+import os
 import re
 import ssl
 import sys
-import os
 from html.parser import HTMLParser
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
-
 
 API_URL = os.getenv("POS_API_URL", "http://localhost:8787")
 BCV_URL = "https://www.bcv.org.ve/"
@@ -77,7 +76,9 @@ def scrape_bcv() -> dict[str, float]:
     ctx.verify_mode = ssl.CERT_NONE
 
     try:
-        req = Request(BCV_URL, headers={"User-Agent": "Mozilla/5.0 (compatible; POS-Bot/1.0)"})
+        req = Request(
+            BCV_URL, headers={"User-Agent": "Mozilla/5.0 (compatible; POS-Bot/1.0)"}
+        )
         with urlopen(req, context=ctx, timeout=15) as resp:
             html = resp.read().decode("utf-8", errors="replace")
     except Exception as e:
@@ -124,11 +125,13 @@ def login(api_url: str, email: str, password: str) -> str | None:
 def send_rate(api_url: str, token: str, currency: str, rate: float) -> bool:
     """Send exchange rate to API."""
     url = f"{api_url}/api/exchange-rate"
-    body = json.dumps({
-        "currencyFrom": currency,
-        "currencyTo": "VES",
-        "rate": rate,
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "currencyFrom": currency,
+            "currencyTo": "VES",
+            "rate": rate,
+        }
+    ).encode("utf-8")
 
     req = Request(
         url,
@@ -163,13 +166,22 @@ def send_rate(api_url: str, token: str, currency: str, rate: float) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description="Actualizar tasa de cambio BCV en POS")
-    parser.add_argument("--url", default=API_URL, help="URL base de la API (default: %(default)s)")
-    parser.add_argument("--email", default=os.getenv("POS_EMAIL"), help="Email para login")
-    parser.add_argument("--password", default=os.getenv("POS_PASSWORD"), help="Password para login")
+    parser.add_argument(
+        "--url", default=API_URL, help="URL base de la API (default: %(default)s)"
+    )
+    parser.add_argument(
+        "--email", default=os.getenv("POS_EMAIL"), help="Email para login"
+    )
+    parser.add_argument(
+        "--password", default=os.getenv("POS_PASSWORD"), help="Password para login"
+    )
     args = parser.parse_args()
 
     if not args.email or not args.password:
-        print("Error: Se requieren --email y --password (o variables POS_EMAIL / POS_PASSWORD)", file=sys.stderr)
+        print(
+            "Error: Se requieren --email y --password (o variables POS_EMAIL / POS_PASSWORD)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     api_url = args.url.rstrip("/")
@@ -193,9 +205,8 @@ def main():
 
     success = 0
     for currency, rate in rates.items():
-        if rate > 0:
-            if send_rate(api_url, token, currency, rate):
-                success += 1
+        if rate > 0 and send_rate(api_url, token, currency, rate):
+            success += 1
 
     print(f"Listo. {success}/{len(rates)} tasas actualizadas.")
     if success == 0:

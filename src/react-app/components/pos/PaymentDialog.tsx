@@ -20,7 +20,6 @@ interface PaymentDialogProps {
   paymentDiff: number;
   submitting: boolean;
   currencies: CurrencyOption[];
-  rateMap: Record<string, number>;
   onUpdatePayment: (index: number, field: keyof PaymentInput, value: string | number) => void;
   onRemovePayment: (index: number) => void;
   onAddPaymentSplit: () => void;
@@ -43,7 +42,6 @@ export function PaymentDialog({
   paymentDiff,
   submitting,
   currencies,
-  rateMap,
   onUpdatePayment,
   onRemovePayment,
   onAddPaymentSplit,

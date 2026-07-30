@@ -339,7 +339,6 @@ function PosPageContent() {
         paymentDiff={paymentDiff}
         submitting={submitting}
         currencies={currencies}
-        rateMap={rateMap}
         onUpdatePayment={updatePayment}
         onRemovePayment={removePayment}
         onAddPaymentSplit={addPaymentSplit}
