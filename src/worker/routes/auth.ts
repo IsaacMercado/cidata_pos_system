@@ -86,7 +86,20 @@ auth.post("/login", async (c) => {
   });
 
   const { passwordHash: _, ...publicUser } = user;
-  return c.json({ user: publicUser, token, success: true });
+
+  const perms = await db
+    .select({ screen: userPermissions.screen })
+    .from(userPermissions)
+    .where(eq(userPermissions.userId, user.id))
+    .all();
+
+  console.log(user, perms)
+
+  return c.json({
+    user: { ...publicUser, permissions: perms.map((p) => p.screen) },
+    token,
+    success: true,
+  });
 });
 
 auth.post("/login/pin", async (c) => {
@@ -140,7 +153,18 @@ auth.post("/login/pin", async (c) => {
   });
 
   const { pinHash, ...publicUser } = user;
-  return c.json({ user: publicUser, token, success: true });
+
+  const perms = await db
+    .select({ screen: userPermissions.screen })
+    .from(userPermissions)
+    .where(eq(userPermissions.userId, user.id))
+    .all();
+
+  return c.json({
+    user: { ...publicUser, permissions: perms.map((p) => p.screen) },
+    token,
+    success: true,
+  });
 });
 
 auth.get("/users", async (c) => {
@@ -196,7 +220,14 @@ auth.get("/users/me", async (c) => {
 
   if (!user) return c.json({ error: "User not found" }, 404);
   if (!user.isActive) return c.json({ error: "User inactive" }, 403);
-  return c.json(user);
+
+  const perms = await db
+    .select({ screen: userPermissions.screen })
+    .from(userPermissions)
+    .where(eq(userPermissions.userId, user.id))
+    .all();
+
+  return c.json({ ...user, permissions: perms.map((p) => p.screen) });
 });
 
 auth.post("/logout", (c) => {

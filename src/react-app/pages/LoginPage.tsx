@@ -56,7 +56,6 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
         token: data.token,
         success: true,
       });
-      navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Credenciales inválidas");
     } finally {
@@ -74,7 +73,6 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
         token: data.token,
         success: true,
       });
-      navigate("/");
       return;
     } catch (err) {
       const isNetworkError =
@@ -115,7 +113,6 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
         success: true,
         offline: true,
       });
-      navigate("/");
     } catch {
       setError("No se pudo verificar el PIN localmente");
     } finally {

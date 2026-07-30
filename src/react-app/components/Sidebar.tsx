@@ -58,8 +58,9 @@ export function Sidebar({ onChangePasswordClick }: SidebarProps) {
   }, [darkMode]);
 
   const isSuperuser = user?.isSuperuser === 1;
-  const links = allLinks.filter((l) => !l.screen || isSuperuser || permissions.includes(l.screen));
-  const showAdmin = isSuperuser || permissions.includes("users");
+  const perms = permissions ?? [];
+  const links = allLinks.filter((l) => !l.screen || isSuperuser || perms.includes(l.screen));
+  const showAdmin = isSuperuser || perms.includes("users");
 
   function isActive(href: string) {
     if (href === "/") return location === "/";

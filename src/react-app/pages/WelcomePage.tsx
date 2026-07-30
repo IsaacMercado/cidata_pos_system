@@ -76,8 +76,9 @@ interface WelcomePageProps {
 export function WelcomePage({ user, permissions }: WelcomePageProps) {
   const [, navigate] = useLocation();
   const isSuperuser = user.isSuperuser === 1;
+  const perms = permissions ?? [];
   const visible = modules.filter(
-    (m) => isSuperuser || permissions.includes(m.screen),
+    (m) => isSuperuser || perms.includes(m.screen),
   );
 
   return (

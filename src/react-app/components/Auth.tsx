@@ -111,6 +111,9 @@ export const AuthProvider = ({ children }: { children: ReactElement }) => {
       permissions: perms,
       cachedAt: new Date().toISOString(),
     });
+
+    await new Promise((r) => setTimeout(r, 0));
+    navigate("/");
   };
 
   const handleLogout = async () => {
