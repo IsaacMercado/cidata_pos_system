@@ -91,8 +91,6 @@ app.get("/", async (c) => {
     .orderBy(products.name)
     .all();
 
-  result.map((r) => console.log(r.rates));
-
   return c.json({ data: result });
 });
 

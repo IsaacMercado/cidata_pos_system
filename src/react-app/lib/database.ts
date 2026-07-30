@@ -379,7 +379,9 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     storage: makeStorage(),
     multiInstance: true,
     eventReduce: true,
-    ignoreDuplicate: true,
+    // ignoreDuplicate only works in dev-mode (throws DB9 in prod). closeDuplicates
+    // closes pre-existing instances and is allowed in production.
+    ...(import.meta.env.DEV ? { ignoreDuplicate: true } : { closeDuplicates: true }),
   });
 
   db.waitForLeadership().then(() => {

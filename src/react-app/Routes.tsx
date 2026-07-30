@@ -17,7 +17,7 @@ export default function Routes() {
   const { user, permissions, handleLogin } = useAuth();
 
   return (
-    <div>
+    <div className="overflow-y-auto h-full">
       <Switch>
         <Route path="/login">
           <LoginPage onLogin={handleLogin} />
