@@ -1,0 +1,13 @@
+[package]
+name = "bcv-fetcher"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bcv-fetcher"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.11", features = ["blocking"] }
+scraper = "0.19"
+clap = { version = "4.5", features = ["derive", "env"] }
