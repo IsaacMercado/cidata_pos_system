@@ -56,7 +56,6 @@ export function SalesPage() {
             <Table.Row>
               <Table.Header>Recibo</Table.Header>
               <Table.Header>Fecha</Table.Header>
-              <Table.Header className="hidden sm:table-cell">Productos</Table.Header>
               <Table.Header className="text-right">Total</Table.Header>
               <Table.Header>Estado</Table.Header>
               <Table.Header>Acciones</Table.Header>
@@ -72,7 +71,6 @@ export function SalesPage() {
                     {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </Table.Cell>
-                <Table.Cell className="text-zinc-500 hidden sm:table-cell">{sale.items?.length ?? 0} artículos</Table.Cell>
                 <Table.Cell className="text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</Table.Cell>
                 <Table.Cell>
                   <Badge variant={sale.status === "completed" ? "success" : sale.status === "cancelled" ? "danger" : "warning"}>
@@ -96,7 +94,7 @@ export function SalesPage() {
                 </Table.Cell>
               </Table.Row>
             ))}
-            {salesData?.length === 0 && <Table.Empty colSpan={6}>No hay ventas registradas</Table.Empty>}
+            {salesData?.length === 0 && <Table.Empty colSpan={5}>No hay ventas registradas</Table.Empty>}
           </Table.Body>
         </Table>
       </Card>
@@ -132,7 +130,7 @@ export function SalesPage() {
               <tbody>
                 {(detail.items || []).map((item) => (
                   <tr key={item.id} className="border-t border-zinc-100">
-                    <td className="py-1.5 text-zinc-800">{item.product?.name || `#${item.productId}`}</td>
+                    <td className="py-1.5 text-zinc-800">{(item as any).name || `#${item.productId}`}</td>
                     <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
                     <td className="py-1.5 text-right font-medium">${item.subtotal.toFixed(2)}</td>
                   </tr>
@@ -153,13 +151,22 @@ export function SalesPage() {
               )}
               {(detail.payments || []).map((p) => {
                 const Icon = METHOD_ICON[p.paymentMethodId];
+                const isMobile = p.paymentMethodId === 4;
                 return (
-                  <div key={p.id} className="flex justify-between text-zinc-500">
-                    <span className="flex items-center gap-1.5">
-                      {Icon && <Icon size={14} />}
-                      {METHOD_LABEL[p.paymentMethodId] || `Método #${p.paymentMethodId}`}
-                    </span>
-                    <span>${p.amount.toFixed(2)}</span>
+                  <div key={p.id}>
+                    <div className="flex justify-between text-zinc-500">
+                      <span className="flex items-center gap-1.5">
+                        {Icon && <Icon size={14} />}
+                        {METHOD_LABEL[p.paymentMethodId] || `Método #${p.paymentMethodId}`}
+                      </span>
+                      <span>${p.amount.toFixed(2)}</span>
+                    </div>
+                    {isMobile && (p.reference || p.phone) && (
+                      <div className="text-xs text-zinc-400 pl-5 mt-0.5 leading-tight">
+                        {p.reference && <div>Ref: {p.reference}</div>}
+                        {p.phone && <div>Tel: {p.phone}</div>}
+                      </div>
+                    )}
                   </div>
                 );
               })}
