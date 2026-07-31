@@ -66,9 +66,15 @@ export function SalesPage() {
               <Table.Row key={sale.id} className={`cursor-pointer ${detailId === sale.id ? "bg-primary-50/60" : ""}`} onClick={() => showDetail(sale.id)}>
                 <Table.Cell className="font-medium text-zinc-800">{sale.receiptNumber}</Table.Cell>
                 <Table.Cell className="text-xs text-zinc-500 whitespace-nowrap">
-                  {new Date(sale.createdAt).toLocaleDateString()}{" "}
+                  {(() => {
+                    const d = new Date(sale.createdAt.replace(" ", "T") + "Z");
+                    return Number.isNaN(d.getTime()) ? sale.createdAt : d.toLocaleDateString();
+                  })()}{" "}
                   <span className="text-zinc-300">
-                    {new Date(sale.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {(() => {
+                      const d = new Date(sale.createdAt.replace(" ", "T") + "Z");
+                      return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                    })()}
                   </span>
                 </Table.Cell>
                 <Table.Cell className="text-right font-semibold text-zinc-800">${sale.total.toFixed(2)}</Table.Cell>
@@ -114,7 +120,7 @@ export function SalesPage() {
               {(() => {
                 const raw = detail.createdAt;
                 if (!raw) return "";
-                const d = new Date(raw);
+                const d = new Date(raw.replace(" ", "T") + "Z");
                 return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
               })()}
             </p>

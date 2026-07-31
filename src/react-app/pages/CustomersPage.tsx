@@ -103,7 +103,7 @@ export function CustomersPage() {
                   {c.phone || <Badge variant="secondary" size="sm">—</Badge>}
                 </Table.Cell>
                 <Table.Cell className="text-xs text-zinc-400 hidden md:table-cell">
-                  {new Date(c.createdAt).toLocaleDateString()}
+                  {(() => { const d = new Date(c.createdAt.replace(" ", "T") + "Z"); return Number.isNaN(d.getTime()) ? c.createdAt : d.toLocaleDateString(); })()}
                 </Table.Cell>
                 <Table.Cell>
                   <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => remove(c.id)}>
