@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql, relations } from "drizzle-orm";
 
 // ─── Exchange Rates ──────────────────────────────────────────────────────────
@@ -109,23 +109,30 @@ export const paymentMethods = sqliteTable("payment_methods", {
 });
 
 // ─── Sales (headers) ─────────────────────────────────────────────────────────
-export const sales = sqliteTable("sales", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  receiptNumber: text("receipt_number").notNull().unique(),
-  customerId: integer("customer_id").references(() => customers.id),
-  userId: integer("user_id").references(() => users.id),
-  tableId: integer("table_id").references((): any => restaurantTables.id),
-  tableName: text("table_name"),
-  subtotal: real("subtotal").notNull().default(0),
-  taxTotal: real("tax_total").notNull().default(0),
-  discountTotal: real("discount_total").notNull().default(0),
-  total: real("total").notNull().default(0),
-  paymentMethodId: integer("payment_method_id").references(() => paymentMethods.id),
-  status: text("status").notNull().default("completed"),
-  notes: text("notes"),
-  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
-});
+export const sales = sqliteTable(
+  "sales",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    clientId: text("client_id"),
+    receiptNumber: text("receipt_number").notNull().unique(),
+    customerId: integer("customer_id").references(() => customers.id),
+    userId: integer("user_id").references(() => users.id),
+    tableId: integer("table_id").references((): any => restaurantTables.id),
+    tableName: text("table_name"),
+    subtotal: real("subtotal").notNull().default(0),
+    taxTotal: real("tax_total").notNull().default(0),
+    discountTotal: real("discount_total").notNull().default(0),
+    total: real("total").notNull().default(0),
+    paymentMethodId: integer("payment_method_id").references(() => paymentMethods.id),
+    status: text("status").notNull().default("completed"),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    clientIdIdx: uniqueIndex("sales_client_id_idx").on(table.clientId),
+  }),
+);
 
 // ─── Sale Items (lines) ──────────────────────────────────────────────────────
 export const saleItems = sqliteTable("sale_items", {

@@ -12,19 +12,19 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, icon: Icon, action }: PageHeaderProps) {
   return (
-    <div className="mb-6 flex items-center justify-between">
-      <div className="flex items-center gap-3">
+    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
         {Icon && (
-          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-zinc-400 to-zinc-500 flex items-center justify-center text-white flex-shrink-0">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-sm">
             <Icon size={14} />
           </span>
         )}
         <div>
-          <h1 className="text-xl font-bold text-zinc-800">{title}</h1>
-          {description && <p className="text-sm text-zinc-500">{description}</p>}
+          <h1 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">{title}</h1>
+          {description && <p className="text-sm text-neutral-500 dark:text-neutral-400">{description}</p>}
         </div>
       </div>
-      {action && <div className="flex items-center gap-2">{action}</div>}
+      {action && <div className="flex w-full items-center gap-2 sm:w-auto">{action}</div>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Route, Switch } from "wouter-preact";
+import { Route, Switch, Redirect } from "wouter-preact";
 
 import { useAuth } from "./components/Auth";
 import { AdminPage } from "./pages/AdminPage";
@@ -15,6 +15,7 @@ import { WelcomePage } from "./pages/WelcomePage";
 
 export default function Routes() {
   const { user, permissions, handleLogin } = useAuth();
+  const can = (screen: string) => user?.isSuperuser === 1 || permissions.includes(screen);
 
   return (
     <div className="overflow-y-auto h-full">
@@ -27,14 +28,14 @@ export default function Routes() {
         </Route>
         {user && (
           <>
-            <Route path="/pos" component={PosPage} />
-            <Route path="/products" component={ProductsPage} />
-            <Route path="/customers" component={CustomersPage} />
-            <Route path="/sales" component={SalesPage} />
-            <Route path="/restaurants/:view?" component={RestaurantsPage} />
-            <Route path="/admin" component={AdminPage} />
-            <Route path="/purchases" component={PurchaseOrdersPage} />
-            <Route path="/exchange-rate" component={ExchangeRatePage} />
+            <Route path="/pos">{can("pos") ? <PosPage /> : <Redirect to="/" />}</Route>
+            <Route path="/products">{can("products") ? <ProductsPage /> : <Redirect to="/" />}</Route>
+            <Route path="/customers">{can("customers") ? <CustomersPage /> : <Redirect to="/" />}</Route>
+            <Route path="/sales">{can("sales") ? <SalesPage /> : <Redirect to="/" />}</Route>
+            <Route path="/restaurants/:view?">{can("restaurants") ? <RestaurantsPage /> : <Redirect to="/" />}</Route>
+            <Route path="/admin">{can("users") ? <AdminPage /> : <Redirect to="/" />}</Route>
+            <Route path="/purchases">{can("purchases") ? <PurchaseOrdersPage /> : <Redirect to="/" />}</Route>
+            <Route path="/exchange-rate">{can("exchange") ? <ExchangeRatePage /> : <Redirect to="/" />}</Route>
             <Route path="/hotel-pos" component={HotelPosSystem} />
           </>
         )}

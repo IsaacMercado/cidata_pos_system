@@ -293,7 +293,7 @@ function PosPageContent() {
 
   return (
     <>
-      <div className="pos-layout">
+      <div className="pos-layout min-h-0">
         <main className="pos-main">
           <MobileCartButton
             orderName={activeOrder.name}

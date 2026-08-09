@@ -67,8 +67,9 @@ BEGIN
     AND (SELECT product_type FROM products WHERE id = NEW.product_id) = 'combo';
 
   INSERT INTO inventory_movements (product_id, type, quantity, reference_type, reference_id, notes, created_at)
-  VALUES (NEW.product_id, 'exit', -NEW.quantity, 'sale', NEW.sale_id,
-    'Venta #' || (SELECT receipt_number FROM sales WHERE id = NEW.sale_id), datetime('now'));
+  SELECT NEW.product_id, 'exit', -NEW.quantity, 'sale', NEW.sale_id,
+    'Venta #' || (SELECT receipt_number FROM sales WHERE id = NEW.sale_id), datetime('now')
+  WHERE (SELECT product_type FROM products WHERE id = NEW.product_id) != 'combo';
 
   INSERT INTO low_stock_alerts (product_id, current_stock, min_stock, created_at)
   SELECT
@@ -159,15 +160,4 @@ CREATE TRIGGER IF NOT EXISTS trg_users_after_update
 AFTER UPDATE ON users WHEN OLD.updated_at IS NOT NULL
 BEGIN UPDATE users SET updated_at = datetime('now') WHERE id = NEW.id; END;
 
-CREATE TRIGGER IF NOT EXISTS trg_products_stock_adjustment
-AFTER UPDATE OF current_stock ON products
-WHEN OLD.current_stock != NEW.current_stock
-  AND NEW.current_stock != OLD.current_stock - (
-    SELECT COALESCE(SUM(quantity), 0) FROM sale_items
-    WHERE product_id = NEW.id AND created_at > OLD.updated_at)
-  AND NEW.current_stock != OLD.current_stock + OLD.current_stock
-BEGIN
-  INSERT INTO inventory_movements (product_id, type, quantity, reference_type, reference_id, notes, created_at)
-  VALUES (NEW.id, 'adjustment', NEW.current_stock - OLD.current_stock,
-    'manual_adjustment', NEW.id, 'Ajuste manual de inventario', datetime('now'));
-END;
+DROP TRIGGER IF EXISTS trg_products_stock_adjustment;

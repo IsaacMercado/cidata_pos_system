@@ -280,8 +280,8 @@ export function usePayment({
                 .exec();
               if (!comboItemProduct) continue;
               await comboItemProduct.incrementalPatch({
-                currentStock:
-                  comboItemProduct.currentStock - comboItem.quantity,
+              currentStock:
+                comboItemProduct.currentStock - comboItem.quantity * item.quantity,
               });
             }
           }

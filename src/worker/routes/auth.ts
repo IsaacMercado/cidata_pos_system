@@ -165,7 +165,7 @@ auth.post("/login/pin", async (c) => {
   });
 });
 
-auth.get("/users", async (c) => {
+auth.get("/users", requireSuperuser, async (c) => {
   const db = c.get("db");
 
   const result = await db.query.users.findMany({
@@ -374,7 +374,7 @@ auth.post("/users/change-password", async (c) => {
   return c.json({ success: true });
 });
 
-auth.get("/users/permissions", async (c) => {
+auth.get("/users/permissions", requireSuperuser, async (c) => {
   const db = c.get("db");
   const idsParam = c.req.query("ids");
   if (!idsParam) return c.json({});
@@ -390,7 +390,7 @@ auth.get("/users/permissions", async (c) => {
   return c.json(map);
 });
 
-auth.get("/users/permissions/:userId", async (c) => {
+auth.get("/users/permissions/:userId", requireSuperuser, async (c) => {
   const db = c.get("db");
   const userId = parseInt(c.req.param("userId"), 10);
   const rows = await db

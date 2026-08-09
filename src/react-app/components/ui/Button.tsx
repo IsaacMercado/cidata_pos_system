@@ -1,4 +1,4 @@
-import type { ComponentChildren, ButtonHTMLAttributes } from "preact";
+import type { ComponentChildren, ButtonHTMLAttributes, ComponentType } from "preact";
 
 type Variant = "primary" | "secondary" | "success" | "warning" | "danger" | "outline" | "ghost" | "link" | "accent" | "dark" | "light";
 type Size = "sm" | "md" | "lg" | "icon";
@@ -9,6 +9,8 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "col
   loading?: boolean;
   className?: string;
   children?: ComponentChildren;
+  fullWidth?: boolean;
+  icon?: ComponentType<any>;
 }
 
 const variantClasses: Record<Variant, string> = {
@@ -39,6 +41,8 @@ export function Button({
   disabled,
   className = "",
   children,
+  fullWidth = false,
+  icon: Icon,
   ...props
 }: ButtonProps) {
   const isDisabled = disabled || loading;
@@ -50,7 +54,7 @@ export function Button({
         disabled:opacity-50 disabled:cursor-not-allowed
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2
         active:scale-[0.98] rounded-lg
-        ${variantClasses[variant]} ${sizeClasses[size]} ${className}
+        ${variantClasses[variant]} ${sizeClasses[size]} ${fullWidth ? "w-full" : ""} ${className}
       `}
       disabled={isDisabled}
       aria-busy={loading}
@@ -62,6 +66,7 @@ export function Button({
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
         </svg>
       )}
+      {!loading && Icon && <Icon className={children ? "mr-2 h-4 w-4" : "h-4 w-4"} />}
       {children}
     </button>
   );

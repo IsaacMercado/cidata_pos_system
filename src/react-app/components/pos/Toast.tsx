@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from "preact/compat";
+import { createContext, useContext, useState, useCallback, useEffect } from "preact/compat";
 import type { ComponentChildren } from "preact";
 
 export interface ToastAction {
@@ -6,15 +6,21 @@ export interface ToastAction {
   onClick: () => void;
 }
 
-type ToastItem = {
+export interface ToastItem {
   id: number;
   message: string;
   type: "success" | "error";
   action?: ToastAction;
-};
+  duration?: number;
+}
 
 const ToastContext = createContext<{
-  toast: (message: string, type?: "success" | "error", action?: ToastAction) => void;
+  toast: (
+    message: string,
+    type?: "success" | "error",
+    action?: ToastAction,
+    duration?: number,
+  ) => void;
 }>({ toast: () => {} });
 
 export function useToast() {
@@ -22,19 +28,55 @@ export function useToast() {
 }
 
 let nextId = 0;
+let toastListener: ((item: Omit<ToastItem, "id">) => void) | null = null;
+const pendingToasts: Omit<ToastItem, "id">[] = [];
+
+// Lets code outside the React tree (e.g. the RxDB replication layer) trigger
+// a toast without having access to the ToastContext.
+export function emitToast(
+  message: string,
+  type: "success" | "error" = "success",
+  action?: ToastAction,
+  duration?: number,
+) {
+  const item = { message, type, action, duration };
+  if (toastListener) {
+    toastListener(item);
+  } else {
+    pendingToasts.push(item);
+  }
+}
 
 export function ToastProvider({ children }: { children: ComponentChildren }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
+  const addToast = useCallback((item: Omit<ToastItem, "id">) => {
+    const id = ++nextId;
+    setToasts((prev) => [...prev, { ...item, id }]);
+    const duration = item.duration ?? 4000;
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, duration);
+  }, []);
+
+  useEffect(() => {
+    toastListener = addToast;
+    for (const item of pendingToasts.splice(0)) addToast(item);
+    return () => {
+      toastListener = null;
+    };
+  }, [addToast]);
+
   const toast = useCallback(
-    (message: string, type: "success" | "error" = "success", action?: ToastAction) => {
-      const id = ++nextId;
-      setToasts((prev) => [...prev, { id, message, type, action }]);
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 4000);
+    (
+      message: string,
+      type: "success" | "error" = "success",
+      action?: ToastAction,
+      duration?: number,
+    ) => {
+      addToast({ message, type, action, duration });
     },
-    [],
+    [addToast],
   );
 
   return (

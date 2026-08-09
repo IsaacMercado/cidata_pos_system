@@ -11,3 +11,5 @@ path = "src/main.rs"
 reqwest = { version = "0.11", features = ["blocking"] }
 scraper = "0.19"
 clap = { version = "4.5", features = ["derive", "env"] }
+x509-parser = "0.16"
+base64 = "0.22"

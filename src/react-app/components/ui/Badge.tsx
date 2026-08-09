@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 
-type BadgeVariant = "default" | "secondary" | "success" | "warning" | "danger" | "info" | "outline";
+type BadgeVariant = "default" | "secondary" | "success" | "warning" | "danger" | "info" | "outline" | "indigo";
 type BadgeSize = "sm" | "md" | "lg";
 
 interface BadgeProps {
@@ -20,6 +20,7 @@ const variantClasses: Record<BadgeVariant, string> = {
   danger: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
   info: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
   outline: "bg-transparent border border-neutral-300 text-neutral-700 dark:border-neutral-600 dark:text-neutral-300",
+  indigo: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
 };
 
 const sizeClasses: Record<BadgeSize, string> = {
@@ -36,6 +37,7 @@ const dotColors: Record<BadgeVariant, string> = {
   danger: "bg-red-500",
   info: "bg-cyan-500",
   outline: "bg-neutral-500",
+  indigo: "bg-indigo-500",
 };
 
 export function Badge({

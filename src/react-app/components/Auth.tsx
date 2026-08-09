@@ -39,6 +39,7 @@ const ALL_SCREENS = [
   "sales",
   "restaurants",
   "purchases",
+  "exchange",
 ];
 
 function offlinePermissions(u: UserInfo): string[] {

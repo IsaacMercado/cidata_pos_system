@@ -15,6 +15,7 @@ import {
     X
 } from 'lucide-react';
 import { useState } from 'react';
+import { Badge, Button, Card } from '../components/ui';
 
 // --- DATOS DE EJEMPLO ---
 const SAMPLE_PRODUCTS = [
@@ -31,53 +32,6 @@ const SAMPLE_PRODUCTS = [
 ];
 
 // --- COMPONENTES BASE (Design System) ---
-const Card = ({ children, className = '', onClick }: { children?: any; className?: string; onClick?: () => void }) => (
-  <div
-    onClick={onClick}
-    className={`bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm ${onClick ? 'cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all' : ''} ${className}`}
-  >
-    {children}
-  </div>
-);
-
-const Button = ({ children, variant = 'primary', size = 'md', icon: Icon = null, fullWidth = false, className = '', ...props }: any) => {
-  const baseStyle = "inline-flex items-center justify-center font-medium transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
-  const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-sm",
-    secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-500",
-    outline: "border border-slate-300 text-slate-700 hover:bg-slate-50 focus:ring-indigo-500",
-    ghost: "text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:ring-slate-500",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-500",
-    success: "bg-emerald-500 text-white hover:bg-emerald-600 focus:ring-emerald-500 shadow-sm"
-  };
-  const sizes = {
-    sm: "px-3 py-1.5 text-sm",
-    md: "px-4 py-2 text-sm",
-    lg: "px-6 py-3 text-base",
-    icon: "p-2"
-  };
-  return (
-    <button className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${sizes[size as keyof typeof sizes]} ${fullWidth ? 'w-full' : ''} ${className}`} {...props}>
-      {Icon && <Icon className={`w-4 h-4 ${children ? 'mr-2' : ''}`} />}
-      {children}
-    </button>
-  );
-};
-
-const Badge = ({ children, variant = 'gray', className = '' }: { children?: any; variant?: string; className?: string }) => {
-  const variants = {
-    gray: 'bg-slate-100 text-slate-700',
-    indigo: 'bg-indigo-100 text-indigo-700',
-    success: 'bg-emerald-100 text-emerald-700',
-    warning: 'bg-amber-100 text-amber-700',
-    danger: 'bg-red-100 text-red-700'
-  };
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${variants[variant as keyof typeof variants]} ${className}`}>
-      {children}
-    </span>
-  );
-};
 
 // --- VISTAS ---
 const POSView = () => {
@@ -141,7 +95,7 @@ const POSView = () => {
   });
 
   return (
-    <div className="flex flex-col md:flex-row h-full w-full bg-slate-50 relative overflow-hidden">
+    <div className="flex flex-col md:flex-row h-full w-full bg-pos-bg relative overflow-hidden">
 
       {/* Botón flotante de carrito (Solo Móvil) */}
       <div className="md:hidden fixed bottom-4 right-4 z-30">

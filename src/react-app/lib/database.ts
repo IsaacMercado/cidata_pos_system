@@ -6,14 +6,18 @@ import {
   type RxJsonSchema,
   type RxCollection,
 } from "rxdb";
-import { RxDBDevModePlugin } from "rxdb/plugins/dev-mode";
+import { RxDBDevModePlugin, disableWarnings } from "rxdb/plugins/dev-mode";
 import { RxDBLeaderElectionPlugin } from "rxdb/plugins/leader-election";
+import { RxDBJsonDumpPlugin } from "rxdb/plugins/json-dump";
 import { replicateRxCollection } from "rxdb/plugins/replication";
 import { getRxStorageDexie } from "rxdb/plugins/storage-dexie";
 import { wrappedValidateAjvStorage } from "rxdb/plugins/validate-ajv";
+import { emitToast } from "../components/pos/Toast";
 import { loadSession } from "./session";
 
 addRxPlugin(RxDBLeaderElectionPlugin);
+addRxPlugin(RxDBJsonDumpPlugin);
+if (import.meta.env.DEV) disableWarnings();
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -372,7 +376,9 @@ function makeStorage() {
 }
 
 const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
-  if (import.meta.env.DEV) addRxPlugin(RxDBDevModePlugin);
+  if (import.meta.env.DEV) {
+    addRxPlugin(RxDBDevModePlugin);
+  }
 
   const db = await createRxDatabase<RxCollections>({
     name: DB_NAME,
@@ -382,10 +388,6 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     // ignoreDuplicate only works in dev-mode (throws DB9 in prod). closeDuplicates
     // closes pre-existing instances and is allowed in production.
     ...(import.meta.env.DEV ? { ignoreDuplicate: true } : { closeDuplicates: true }),
-  });
-
-  db.waitForLeadership().then(() => {
-    console.log("isLeader now");
   });
 
   await db.addCollections({
@@ -400,29 +402,13 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
   startReplication(db.restaurants, "restaurants");
   startReplication(db.restaurant_tables, "restaurant_tables");
   startReplication(db.operators, "operators");
-  startPushReplication(db.sales, "sales");
+  startPushReplication(db.sales);
+  startPendingSalesRetry(db.sales);
 
   return db;
 };
 
-const DB_INIT_VERSION = "0";
-
-// The local DB is only a refillable cache. On init version bump, wipe and recreate
-// so the pull replication re-fetches all data with the latest schema.
 const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
-  const stored =
-    typeof localStorage !== "undefined"
-      ? localStorage.getItem("rxdb:init")
-      : null;
-  if (stored !== DB_INIT_VERSION) {
-    try {
-      await removeRxDatabase(DB_NAME, getRxStorageDexie());
-    } catch {
-      /* might not exist yet */
-    }
-    localStorage.setItem("rxdb:init", DB_INIT_VERSION);
-  }
-
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       return await createDatabase();
@@ -430,18 +416,17 @@ const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
       const rxErr = err as any;
       if (attempt === 0) {
         console.warn(
-          "RxDB init error — recreating cache DB:",
+          "RxDB init error — retrying without deleting local data:",
           rxErr?.code ?? rxErr?.message,
         );
-        try {
-          await removeRxDatabase(DB_NAME, getRxStorageDexie());
-        } catch {}
+        // Never delete the local database automatically. It may contain sales
+        // waiting for replication and must be preserved for backup/recovery.
         continue;
       }
       throw err;
     }
   }
-  throw new Error("RxDB init failed after retry");
+  throw new Error("RxDB init failed after retry without deleting local data");
 };
 
 function authHeaders(): HeadersInit {
@@ -453,6 +438,212 @@ function authHeaders(): HeadersInit {
   return headers;
 }
 
+class ServerError extends Error {
+  isServerError = true;
+}
+
+type SyncErrorInfo = {
+  collection: string;
+  direction: "push" | "pull";
+  timestamp: string;
+  message: string;
+  status: number | null;
+  statusText: string;
+  requestUrl: string;
+  requestBody: string;
+  responseBody: string;
+};
+
+const lastServerErrorAt = new Map<string, number>();
+const SERVER_ERROR_COOLDOWN_MS = 20_000;
+const SERVER_ERROR_TOAST_DURATION = 15_000;
+const pendingPushes = new Map<string, Promise<boolean>>();
+let pendingRetryTimer: number | null = null;
+
+function buildErrorLog(info: SyncErrorInfo): string {
+  return [
+    `Error de sincronización ${info.direction.toUpperCase()} — ${info.collection}`,
+    `Fecha: ${info.timestamp}`,
+    `Mensaje: ${info.message}`,
+    ``,
+    `=== Solicitud ===`,
+    `Método: POST`,
+    `URL: ${info.requestUrl}`,
+    `Cuerpo:`,
+    info.requestBody,
+    ``,
+    `=== Respuesta ===`,
+    `Estado: ${info.status ?? "desconocido"}${info.statusText ? ` (${info.statusText})` : ""}`,
+    `Cuerpo:`,
+    info.responseBody,
+  ].join("\n");
+}
+
+function downloadErrorLog(info: SyncErrorInfo) {
+  const blob = new Blob([buildErrorLog(info)], {
+    type: "text/plain;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sync-error-${info.collection}-${info.direction}-${Date.now()}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Shows a toast (with a download button) for a server-side error. Network
+// timeouts are not reported here, only real server responses with errors.
+function reportServerError(info: SyncErrorInfo) {
+  const now = Date.now();
+  const key = `${info.direction}:${info.collection}:${info.message}`;
+  const last = lastServerErrorAt.get(key) ?? 0;
+  if (now - last >= SERVER_ERROR_COOLDOWN_MS) {
+    lastServerErrorAt.set(key, now);
+    console.error("RxDB replication server error", info);
+    emitToast(
+      info.message,
+      "error",
+      { label: "Descargar", onClick: () => downloadErrorLog(info) },
+      SERVER_ERROR_TOAST_DURATION,
+    );
+  }
+}
+
+function buildPushBody(docData: any) {
+  return {
+    clientId: docData.clientId,
+    rxid: docData.rxid,
+    items: docData.items,
+    payments: docData.payments,
+    customerId: docData.customerId,
+    userId: docData.userId,
+    tableId: docData.tableId,
+    notes: docData.notes,
+    status: docData.status,
+    reservations: docData.reservations,
+  };
+}
+
+async function pushSaleDocument(
+  collection: RxCollection<any>,
+  docData: any,
+  document?: any,
+): Promise<boolean> {
+  const key = docData.clientId || docData.rxid;
+  const running = pendingPushes.get(key);
+  if (running) return running;
+
+  const promise = (async () => {
+    const requestUrl = `${API_BASE}/replicate/sales/push`;
+    const body = buildPushBody(docData);
+    const requestBody = JSON.stringify(body, null, 2);
+    const session = loadSession();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (session?.token) headers.Authorization = `Bearer ${session.token}`;
+
+    try {
+      const res = await fetch(requestUrl, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      const { text, json } = await readResponse(res);
+      if (!res.ok || !json?.success) {
+        const message = json?.error || `No se pudo guardar la venta en el servidor (HTTP ${res.status})`;
+        reportServerError({
+          collection: "sales",
+          direction: "push",
+          timestamp: new Date().toISOString(),
+          message,
+          status: res.status,
+          statusText: res.statusText,
+          requestUrl,
+          requestBody,
+          responseBody: text,
+        });
+        return false;
+      }
+
+      const target = document || await collection.findOne(docData.rxid).exec();
+      if (target) {
+        await target.incrementalPatch({
+          serverId: json.serverId ?? null,
+          receiptNumber: json.receiptNumber ?? target.receiptNumber,
+          syncStatus: "synced",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return true;
+    } catch (error) {
+      reportServerError({
+        collection: "sales",
+        direction: "push",
+        timestamp: new Date().toISOString(),
+        message: "No se pudo conectar con el servidor. La venta seguirá pendiente.",
+        status: null,
+        statusText: "",
+        requestUrl,
+        requestBody,
+        responseBody: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  })();
+
+  pendingPushes.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    pendingPushes.delete(key);
+  }
+}
+
+async function retryPendingSales(collection: RxCollection<any>) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  const pending = await collection
+    .find({ selector: { syncStatus: "pending" }, sort: [{ createdAt: "asc" }] })
+    .exec();
+  for (const document of pending) {
+    await pushSaleDocument(collection, document.toJSON(), document);
+  }
+}
+
+function startPendingSalesRetry(collection: RxCollection<any>) {
+  if (typeof window === "undefined") return;
+  const retry = async () => {
+    await retryPendingSales(collection).catch((error) => console.error("Pending sales retry failed", error));
+    pendingRetryTimer = window.setTimeout(retry, 15_000);
+  };
+  if (pendingRetryTimer !== null) window.clearTimeout(pendingRetryTimer);
+  pendingRetryTimer = window.setTimeout(retry, 1_000);
+  window.addEventListener("online", retry);
+  window.addEventListener("focus", retry);
+}
+
+// Helper to read the raw response body as text (keeps non-JSON error pages
+// readable) and parse it as JSON when possible.
+async function readResponse(res: Response): Promise<{
+  text: string;
+  json: any;
+}> {
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    text = "No se pudo leer la respuesta";
+  }
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { text, json };
+}
+
 function startReplication(collection: RxCollection<any>, name: string) {
   return replicateRxCollection({
     collection,
@@ -462,7 +653,13 @@ function startReplication(collection: RxCollection<any>, name: string) {
     deletedField: "_deleted",
     pull: {
       async handler(checkpoint: any, batchSize: number) {
-        const res = await fetch(`${API_BASE}/replicate/${name}/pull`, {
+        const requestUrl = `${API_BASE}/replicate/${name}/pull`;
+        const requestBody = JSON.stringify(
+          { checkpoint: checkpoint ?? null, limit: batchSize },
+          null,
+          2,
+        );
+        const res = await fetch(requestUrl, {
           method: "POST",
           headers: authHeaders(),
           credentials: "include",
@@ -471,17 +668,34 @@ function startReplication(collection: RxCollection<any>, name: string) {
             limit: batchSize,
           }),
         });
-        const data = await res.json();
+        const { text, json } = await readResponse(res);
+        if (!res.ok || !json || !Array.isArray(json.documents)) {
+          const message =
+            json?.error ||
+            `No se pudo sincronizar con el servidor (HTTP ${res.status})`;
+          reportServerError({
+            collection: name,
+            direction: "pull",
+            timestamp: new Date().toISOString(),
+            message,
+            status: res.status,
+            statusText: res.statusText,
+            requestUrl,
+            requestBody,
+            responseBody: text,
+          });
+          throw new ServerError(message);
+        }
         return {
-          documents: data.documents ?? [],
-          checkpoint: data.checkpoint ?? null,
+          documents: json.documents,
+          checkpoint: json.checkpoint ?? null,
         };
       },
     },
   });
 }
 
-function startPushReplication(collection: RxCollection<any>, name: string) {
+function startPushReplication(collection: RxCollection<any>) {
   return replicateRxCollection({
     collection,
     replicationIdentifier: "push-server",
@@ -489,46 +703,22 @@ function startPushReplication(collection: RxCollection<any>, name: string) {
     retryTime: 5000,
     deletedField: "_deleted",
     push: {
+      modifier: async (doc: any) => doc.syncStatus === "pending" ? doc : null,
       handler: async (documents: any[]) => {
-        const session = loadSession();
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (session?.token)
-          headers["Authorization"] = `Bearer ${session.token}`;
+        let batchFailed = false;
 
-        const results: any[] = [];
         for (const doc of documents) {
           const docData = doc.newDocumentState ?? doc;
-          try {
-            const res = await fetch(`${API_BASE}/replicate/${name}/push`, {
-              method: "POST",
-              headers,
-              credentials: "include",
-              body: JSON.stringify({
-                clientId: docData.clientId,
-                rxid: docData.rxid,
-                items: docData.items,
-                payments: docData.payments,
-                customerId: docData.customerId,
-                userId: docData.userId,
-                tableId: docData.tableId,
-                notes: docData.notes,
-                status: docData.status,
-                reservations: docData.reservations,
-              }),
-            });
-            const responseData = await res.json();
-            if (res.ok && responseData.success) {
-              results.push({ document: doc, ok: true });
-            } else {
-              throw new Error(responseData.error || "Push failed");
-            }
-          } catch (e) {
-            results.push({ document: doc, error: e, ok: false });
-          }
+          const ok = await pushSaleDocument(collection, docData);
+          if (!ok) batchFailed = true;
         }
-        return results as any;
+
+        // Throwing makes RxDB retry the whole batch after retryTime instead of
+        // marking the failed documents as successfully pushed.
+        if (batchFailed) {
+          throw new ServerError("Error de sincronización con el servidor");
+        }
+        return [];
       },
     },
   });
@@ -536,12 +726,29 @@ function startPushReplication(collection: RxCollection<any>, name: string) {
 
 export async function resetDatabase() {
   try {
+    const db = await dbPromise?.catch(() => null);
+    await db?.close();
     dbPromise = null;
     await removeRxDatabase(DB_NAME, getRxStorageDexie());
-    localStorage.removeItem("rxdb:init");
   } catch (e) {
     console.warn("Error resetting database:", e);
   }
+}
+
+export async function downloadDatabaseBackup() {
+  const db = await getDatabase();
+  const dump = await db.exportJSON();
+  const blob = new Blob([JSON.stringify(dump, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `pos-local-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const getDatabase = (): Promise<RxDatabase<RxCollections>> => {

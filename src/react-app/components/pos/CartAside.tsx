@@ -182,7 +182,7 @@ export function CartAside({
   }
 
   return (
-    <aside className="hidden md:flex md:flex-col md:w-80 lg:w-96 md:border-l md:border-zinc-200 dark:md:border-zinc-800 md:bg-zinc-50 dark:md:bg-zinc-900 md:shadow-2xl">
+    <aside className="hidden md:flex md:h-full md:min-h-0 md:flex-col md:w-80 lg:w-96 md:border-l md:border-zinc-200 dark:md:border-zinc-800 md:bg-zinc-50 dark:md:bg-zinc-900 md:shadow-2xl">
       {inner}
     </aside>
   );

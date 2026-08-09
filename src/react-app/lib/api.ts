@@ -220,7 +220,12 @@ export const api = {
 
 
   exchange: {
-    get: () => request<Record<string, number>>("/exchange-rate"),
+    list: () => request<Array<{ id: number; currencyFrom: string; currencyTo: string; rate: number; fetchedAt: string }>>("/exchange-rate"),
+    get: () => request<Record<string, number>>("/exchange-rate/current", undefined, false),
+    create: (data: { currencyFrom: string; currencyTo: string; rate: number }) =>
+      request<{ success: boolean }>("/exchange-rate", { method: "POST", body: JSON.stringify(data) }, false),
+    scrape: () => request<{ source: string; fetchedAt: string; rates: Record<string, number> }>("/exchange-rate/scrape", undefined, false),
+    scrapeAndSave: () => request<{ success: boolean; source: string; rates: Record<string, number> }>("/exchange-rate/scrape", { method: "POST" }, false),
   },
 
   purchases: {

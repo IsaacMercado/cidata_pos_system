@@ -1,4 +1,4 @@
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 
 interface CardProps {
   children: ComponentChildren;
@@ -7,19 +7,21 @@ interface CardProps {
   hover?: boolean;
   bordered?: boolean;
   style?: Record<string, string | number>;
+  onClick?: JSX.MouseEventHandler<HTMLDivElement>;
 }
 
-export function Card({ children, className = "", padding = true, hover = false, bordered = true, style }: CardProps) {
+export function Card({ children, className = "", padding = true, hover = false, bordered = true, style, onClick }: CardProps) {
   return (
     <div
       className={`
-        rounded-xl bg-white dark:bg-neutral-900
+        rounded-2xl bg-white shadow-[var(--shadow-card)] dark:bg-neutral-900
         ${bordered ? "border border-neutral-200 dark:border-neutral-700" : ""}
         ${padding ? "p-4 sm:p-5" : ""}
         ${hover ? "transition-shadow hover:shadow-lg" : ""}
         ${className}
       `}
       style={style}
+      onClick={onClick}
     >
       {children}
     </div>

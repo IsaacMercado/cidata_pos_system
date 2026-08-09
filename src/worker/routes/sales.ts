@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { exchangeRates, products, saleItems, salePayments, sales, sequences } from "../db/schema";
@@ -51,7 +51,7 @@ const paySchema = z.object({
   { message: "Pago móvil requiere reference, paymentDate y phone" },
 );
 
-async function getCurrentRate(db: Env["Variables"]["db"], currencyFrom: string, currencyTo: string): Promise<number | null> {
+async function getCurrentRate(db: any, currencyFrom: string, currencyTo: string): Promise<number | null> {
   if (currencyFrom === currencyTo) return 1;
   const row = await db
     .select({ rate: exchangeRates.rate })
@@ -63,7 +63,7 @@ async function getCurrentRate(db: Env["Variables"]["db"], currencyFrom: string, 
   return row?.rate ?? null;
 }
 
-async function generateReceiptNumber(db: Env["Variables"]["db"]): Promise<string> {
+async function generateReceiptNumber(db: any): Promise<string> {
   const date = new Date();
   const prefix = `REC-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
 
@@ -79,11 +79,16 @@ async function generateReceiptNumber(db: Env["Variables"]["db"]): Promise<string
   return `${prefix}-${String(seq!.value).padStart(5, "0")}`;
 }
 
-function insertSaleItemValues(saleId: number, item: z.infer<typeof saleItemInput>) {
+function insertSaleItemValues(
+  saleId: number,
+  item: z.infer<typeof saleItemInput>,
+  taxRate = 0,
+) {
   const baseSubtotal = item.quantity * item.unitPrice;
   const discountAmount = baseSubtotal * (item.discountPercent / 100);
   const subtotal = baseSubtotal - discountAmount;
   const roundedSubtotal = Math.round(subtotal * 100) / 100;
+  const taxAmount = Math.round((roundedSubtotal * taxRate) / 100 * 100) / 100;
 
   return {
     saleId,
@@ -93,8 +98,8 @@ function insertSaleItemValues(saleId: number, item: z.infer<typeof saleItemInput
     discountPercent: item.discountPercent,
     discountAmount: Math.round(discountAmount * 100) / 100,
     subtotal: roundedSubtotal,
-    taxAmount: 0,
-    total: roundedSubtotal,
+    taxAmount,
+    total: roundedSubtotal + taxAmount,
   };
 }
 
@@ -154,37 +159,46 @@ app.post("/", async (c) => {
     return c.json(validationError(e), 400);
   }
 
-  const receiptNumber = await generateReceiptNumber(db);
-
-  const result = await db
-    .insert(sales)
-    .values({
-      receiptNumber,
-      customerId: body.customerId,
-      userId: body.userId,
-      tableId: body.tableId,
-      subtotal: 0,
-      taxTotal: 0,
-      discountTotal: 0,
-      total: 0,
-      paymentMethodId: body.paymentMethodId,
-      notes: body.notes,
-      status: body.status,
-    })
-    .returning()
-    .get();
-
   try {
-    const itemValues = body.items.map((item) => insertSaleItemValues(result.id, item));
-    await db.insert(saleItems).values(itemValues).run();
+    const receiptNumber = await generateReceiptNumber(db);
+    const productRows = await db
+      .select({ id: products.id, taxRate: products.taxRate })
+      .from(products)
+      .where(inArray(products.id, body.items.map((item) => item.productId)))
+      .all();
+    const taxRateMap = new Map(productRows.map((product) => [product.id, product.taxRate]));
+    const saleId = sql`(SELECT id FROM sales WHERE receipt_number = ${receiptNumber})`;
+    const itemValues = body.items.map((item) => ({
+      ...insertSaleItemValues(0, item, taxRateMap.get(item.productId) ?? 0),
+      saleId,
+    }));
+
+    await db.batch([
+      db.insert(sales).values({
+        receiptNumber,
+        customerId: body.customerId,
+        userId: body.userId,
+        tableId: body.tableId,
+        subtotal: 0,
+        taxTotal: 0,
+        discountTotal: 0,
+        total: 0,
+        paymentMethodId: body.paymentMethodId,
+        notes: body.notes,
+        status: body.status,
+      }),
+      db.insert(saleItems).values(itemValues),
+    ]);
+
+    const createdSale = await db.select({ id: sales.id }).from(sales).where(eq(sales.receiptNumber, receiptNumber)).get();
+    if (!createdSale) return c.json({ error: "Sale was not created" }, 500);
+    const fullSale = await getSaleDetails(db, createdSale.id);
+    return c.json({ data: fullSale }, 201);
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);
     throw error;
   }
-
-  const fullSale = await getSaleDetails(db, result.id);
-  return c.json({ data: fullSale }, 201);
 });
 
 app.get("/", async (c) => {
@@ -290,18 +304,18 @@ app.post("/:id/pay", async (c) => {
   }));
 
   try {
-    await db.delete(salePayments).where(eq(salePayments.saleId, id)).run();
-    await db.insert(salePayments).values(paymentValues).run();
-    await db
-      .update(sales)
-      .set({
-        status: "completed",
-        customerId: body.customerId ?? sale.customerId,
-        notes: body.notes ?? sale.notes,
-        paymentMethodId: paymentValues.length === 1 ? paymentValues[0].paymentMethodId : null,
-      })
-      .where(eq(sales.id, id))
-      .run();
+    await db.batch([
+      db.delete(salePayments).where(eq(salePayments.saleId, id)),
+      db.insert(salePayments).values(paymentValues),
+      db.update(sales)
+        .set({
+          status: "completed",
+          customerId: body.customerId ?? sale.customerId,
+          notes: body.notes ?? sale.notes,
+          paymentMethodId: paymentValues.length === 1 ? paymentValues[0].paymentMethodId : null,
+        })
+        .where(eq(sales.id, id)),
+    ]);
   } catch (error) {
     const clientError = asClientError(error);
     if (clientError) return c.json({ error: clientError.error }, 400);

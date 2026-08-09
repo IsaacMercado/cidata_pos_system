@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { playwright } from '@vitest/browser-playwright';
 const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   server: {
     port: 5173,
     proxy: {
@@ -18,35 +18,39 @@ export default defineConfig({
       }
     }
   },
-  plugins: [tailwindcss(), preact(), ...(process.env.VITE_DISABLE_PWA ? [] : [VitePWA({
-    registerType: "autoUpdate",
-    includeAssets: ["**/*"],
-    manifest: {
-      name: "POS - Punto de Venta",
-      short_name: "POS",
-      description: "Sistema de punto de venta offline-first",
-      theme_color: "#1e293b",
-      background_color: "#f8fafc",
-      display: "standalone",
-      orientation: "portrait",
-      start_url: "/",
-      icons: [{
-        src: "/icon-192.svg",
-        sizes: "192x192",
-        type: "image/svg+xml"
-      }, {
-        src: "/icon-512.svg",
-        sizes: "512x512",
-        type: "image/svg+xml",
-        purpose: "any maskable"
-      }]
-    },
-    workbox: {
-      globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
-      navigateFallback: "/index.html",
-      navigateFallbackDenylist: [/^\/api\//]
-    }
-  })])],
+  plugins: [
+    tailwindcss(),
+    preact(),
+    ...(command === "build" && !process.env.VITE_DISABLE_PWA ? [VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["**/*"],
+      manifest: {
+        name: "POS - Punto de Venta",
+        short_name: "POS",
+        description: "Sistema de punto de venta offline-first",
+        theme_color: "#1e293b",
+        background_color: "#f8fafc",
+        display: "standalone",
+        orientation: "portrait",
+        start_url: "/",
+        icons: [{
+          src: "/icon-192.svg",
+          sizes: "192x192",
+          type: "image/svg+xml"
+        }, {
+          src: "/icon-512.svg",
+          sizes: "512x512",
+          type: "image/svg+xml",
+          purpose: "any maskable"
+        }]
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/api\//]
+      }
+    })] : [])
+  ],
   build: {
     target: "esnext",
     outDir: "dist",
@@ -75,4 +79,4 @@ export default defineConfig({
       }
     }]
   }
-});
+}));

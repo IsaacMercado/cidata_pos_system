@@ -8,8 +8,8 @@ import { eq, and, sql } from "drizzle-orm";
 const app = new Hono<Env>();
 
 const adjustSchema = z.object({
-  productId: z.number(),
-  quantity: z.number(),
+  productId: z.number().int().positive(),
+  quantity: z.number().finite(),
   notes: z.string().optional(),
   userId: z.number().optional(),
 });
@@ -59,28 +59,30 @@ app.post("/adjust", async (c) => {
 
   if (!product) return c.json({ error: "Product not found" }, 404);
 
-  await db
-    .update(products)
-    .set({
-      currentStock: sql`current_stock + ${body.quantity}`,
-      updatedAt: sql`(datetime('now'))`,
-    })
-    .where(eq(products.id, body.productId));
-
-  const result = await db
-    .insert(inventoryMovements)
-    .values({
+  const result = await db.batch([
+    db.update(products)
+      .set({
+        currentStock: sql`current_stock + ${body.quantity}`,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(products.id, body.productId)),
+    db.insert(inventoryMovements).values({
       productId: body.productId,
       type: body.quantity > 0 ? "entry" : "exit",
       quantity: Math.abs(body.quantity),
       referenceType: "adjustment",
       notes: body.notes || "Ajuste manual",
       userId: body.userId,
-    })
-    .returning()
-    .get();
+    }),
+  ]);
 
-  return c.json({ data: result }, 201);
+  return c.json({
+    data: {
+      ...product,
+      currentStock: product.currentStock + body.quantity,
+      movement: result[1],
+    },
+  }, 201);
 });
 
 app.get("/movements", async (c) => {
@@ -121,7 +123,7 @@ app.get("/alerts", async (c) => {
     .from(lowStockAlerts)
     .leftJoin(products, eq(lowStockAlerts.productId, products.id))
     .where(eq(lowStockAlerts.resolved, 0))
-    .orderBy(sql`created_at DESC`)
+    .orderBy(sql`low_stock_alerts.created_at DESC`)
     .all();
 
   return c.json({ data: alerts });

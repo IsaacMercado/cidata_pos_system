@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createDb } from "./db";
-import { middlewareJwtPayload } from "./lib/auth";
+import { middlewareJwtPayload, requireScreenPermission } from "./lib/auth";
 import authRouter from "./routes/auth";
 import comboItemsRouter from "./routes/combo-items";
 import customersRouter from "./routes/customers";
@@ -13,6 +13,7 @@ import replicateRouter from "./routes/replicate";
 import reservationRatesRouter from "./routes/reservation-rates";
 import restaurantsRouter from "./routes/restaurants";
 import salesRouter from "./routes/sales";
+import { updateRatesFromBcv } from "./routes/exchange";
 
 export interface Env {
   Bindings: {
@@ -88,6 +89,28 @@ app.use("/api/*", async (c, next) => {
   return middlewareJwtPayload(c, next);
 });
 
+// Authorization is enforced here as well as in the UI. Hiding a navigation
+// item must never be the only protection for a business operation.
+app.use("/api/products", requireScreenPermission("products"));
+app.use("/api/products/*", requireScreenPermission("products"));
+app.use("/api/combo-items", requireScreenPermission("products"));
+app.use("/api/combo-items/*", requireScreenPermission("products"));
+app.use("/api/reservation-rates", requireScreenPermission("products"));
+app.use("/api/reservation-rates/*", requireScreenPermission("products"));
+app.use("/api/sales", requireScreenPermission("sales"));
+app.use("/api/sales/*", requireScreenPermission("sales"));
+app.use("/api/customers", requireScreenPermission("customers"));
+app.use("/api/customers/*", requireScreenPermission("customers"));
+app.use("/api/inventory", requireScreenPermission("purchases"));
+app.use("/api/inventory/*", requireScreenPermission("purchases"));
+app.use("/api/restaurants", requireScreenPermission("restaurants"));
+app.use("/api/restaurants/*", requireScreenPermission("restaurants"));
+app.use("/api/purchases", requireScreenPermission("purchases"));
+app.use("/api/purchases/*", requireScreenPermission("purchases"));
+app.use("/api/exchange-rate", requireScreenPermission("exchange"));
+app.use("/api/exchange-rate/*", requireScreenPermission("exchange"));
+app.use("/api/replicate/*", requireScreenPermission("pos"));
+
 app.get("/health", (c) =>
   c.json({ status: "ok", timestamp: new Date().toISOString() }),
 );
@@ -112,4 +135,9 @@ app.notFound(async (c) => {
   return c.json({ error: "Not found" }, 404);
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(_controller: ScheduledController, env: Env["Bindings"]) {
+    await updateRatesFromBcv(env);
+  },
+};

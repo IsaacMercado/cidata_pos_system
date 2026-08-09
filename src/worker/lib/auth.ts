@@ -1,6 +1,8 @@
 import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
+import { eq } from "drizzle-orm";
+import { users, userPermissions } from "../db/schema";
 
 // Iteraciones ajustadas al límite de CPU del free tier de Cloudflare (~10ms/req).
 // El login online es un evento raro; el resto de requests solo verifica el JWT (microsegundos).
@@ -46,6 +48,34 @@ export const middlewareJwtPayload = async (c: Context, next: Next) => {
   c.set("jwtPayload", payload);
   await next();
 };
+
+export function requireScreenPermission(screen: string) {
+  return async (c: Context, next: Next) => {
+    const payload = c.get("jwtPayload") as Record<string, unknown> | undefined;
+    const username = payload?.sub;
+    if (!username) return c.json({ error: "No autorizado" }, 401);
+
+    const db = c.get("db");
+    const user = await db
+      .select({ id: users.id, isSuperuser: users.isSuperuser, isActive: users.isActive })
+      .from(users)
+      .where(eq(users.username, username as string))
+      .get();
+
+    if (!user || !user.isActive) return c.json({ error: "Usuario inactivo" }, 403);
+    if (user.isSuperuser) return next();
+
+    const screens = await db
+      .select({ screen: userPermissions.screen })
+      .from(userPermissions)
+      .where(eq(userPermissions.userId, user.id))
+      .all();
+    if (!screens.some((item: { screen: string }) => item.screen === screen)) {
+      return c.json({ error: "Acceso denegado" }, 403);
+    }
+    return next();
+  };
+}
 
 export const passwordHash = async (password: string, salt?: string): Promise<string> => {
   const encoder = new TextEncoder();

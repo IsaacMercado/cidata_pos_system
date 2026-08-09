@@ -146,6 +146,21 @@
   color-scheme: light;
 }
 
+.app-shell {
+  background: var(--color-pos-bg);
+}
+
+.app-main {
+  background: transparent;
+  overflow-y: auto;
+}
+
+@media (max-width: 767px) {
+  .app-main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -160,6 +175,11 @@ body {
   user-select: none;
   -webkit-user-select: none;
   font-family: var(--font-sans);
+}
+
+.dark .app-shell,
+.dark .app-main {
+  background: #0f172a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -474,13 +494,13 @@ dialog::backdrop {
 .pos-layout {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 3.5rem);
+  height: 100%;
 }
 
 @media (min-width: 768px) {
   .pos-layout {
     flex-direction: row;
-    height: calc(100dvh - 1rem);
+    height: 100%;
   }
 }
 

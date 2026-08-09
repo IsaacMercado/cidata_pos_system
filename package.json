@@ -17,8 +17,8 @@
     "db:triggers:remote": "wrangler d1 execute pos-db --remote --file=./src/worker/db/triggers.sql",
     "cf-typegen": "wrangler types",
     "lint": "tsc --noEmit",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.8.0",

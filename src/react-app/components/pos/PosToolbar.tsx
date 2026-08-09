@@ -1,5 +1,5 @@
-import { Database, RefreshCw, Search } from "lucide-react";
-import { resetDatabase } from "../../lib/database";
+import { Archive, Database, RefreshCw, Search } from "lucide-react";
+import { downloadDatabaseBackup, resetDatabase } from "../../lib/database";
 import type { CurrencyOption } from "../../hooks/useCurrency";
 
 interface PosToolbarProps {
@@ -70,9 +70,27 @@ export function PosToolbar({
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={async () => {
-              if (!window.confirm("¿Está seguro de que desea restaurar la base de datos? Se perderán todos los datos locales y se volverá a sincronizar desde el servidor.")) return;
-              await resetDatabase();
-              location.reload();
+              try {
+                await downloadDatabaseBackup();
+              } catch {
+                window.alert("No se pudo descargar la base de datos local.");
+              }
+            }}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            title="Descargar respaldo de la base de datos local"
+          >
+            <Archive size={16} />
+          </button>
+          <button
+            onClick={async () => {
+              if (!window.confirm("¿Está seguro de que desea borrar todos los datos locales? Descargue primero un respaldo. Las ventas pendientes de sincronización se perderán.")) return;
+              try {
+                await downloadDatabaseBackup();
+                await resetDatabase();
+                location.reload();
+              } catch {
+                window.alert("No se borró la base local porque no se pudo generar el respaldo.");
+              }
             }}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
             title="Restaurar DB — Limpia la base de datos local y vuelve a sincronizar desde el servidor"

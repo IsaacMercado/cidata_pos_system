@@ -120,11 +120,9 @@ export function App() {
         <ToastProvider>
           <ErrorBoundary>
             <AuthProvider>
-              <div className="flex h-screen w-full bg-slate-100 font-sans text-slate-900 overflow-hidden">
-                <Sidebar
-                  onChangePasswordClick={() => setPasswordModalOpen(true)}
-                />
-                <main className="flex-1 flex flex-col min-w-0 pt-16 md:pt-0 h-[100dvh]">
+              <div className="app-shell flex h-screen w-full font-sans text-neutral-900 overflow-hidden">
+                <Sidebar onChangePasswordClick={() => setPasswordModalOpen(true)} />
+                <main className="app-main flex-1 flex flex-col min-w-0 pt-16 md:pt-0 h-[100dvh]">
                   <Routes />
                 </main>
                 <ChangePasswordModal

@@ -1,7 +1,7 @@
 import { useState } from "preact/hooks";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { api } from "../lib/api";
-import { Button } from "./ui";
+import { Button, CardTitle, Input } from "./ui";
 
 interface ChangePasswordModalProps {
   open: boolean;
@@ -54,11 +54,11 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl bg-slate-900 p-6 shadow-2xl"
+        className="w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Cambiar Contraseña</h2>
+           <CardTitle>Cambiar contraseña</CardTitle>
           <button
             className="text-2xl leading-none text-slate-400 hover:text-white"
             onClick={onClose}
@@ -74,25 +74,10 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
             <Button onClick={onClose}>Cerrar</Button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit(onSubmit)} class="flex flex-col gap-4">
-            <input
-              type="password"
-              placeholder="Contraseña actual"
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...register("currentPassword", { required: true })}
-            />
-            <input
-              type="password"
-              placeholder="Nueva contraseña"
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...register("newPassword", { required: true })}
-            />
-            <input
-              type="password"
-              placeholder="Confirmar nueva contraseña"
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-violet-500"
-              {...register("confirmPassword", { required: true })}
-            />
+           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+             <Input label="Contraseña actual" type="password" {...register("currentPassword", { required: true })} />
+             <Input label="Nueva contraseña" type="password" {...register("newPassword", { required: true })} />
+             <Input label="Confirmar nueva contraseña" type="password" {...register("confirmPassword", { required: true })} />
             {error && (
               <p className="text-sm text-red-400">{error}</p>
             )}

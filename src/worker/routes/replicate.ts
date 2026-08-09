@@ -17,7 +17,7 @@ import {
 import type { Env } from "../index";
 
 async function getCurrentRate(
-  db: Env["Variables"]["db"],
+  db: any,
   currencyFrom: string,
   currencyTo: string,
 ): Promise<number | null> {
@@ -38,7 +38,7 @@ async function getCurrentRate(
 }
 
 async function generateReceiptNumber(
-  db: Env["Variables"]["db"],
+  db: any,
 ): Promise<string> {
   const date = new Date();
   const prefix = `REC-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
@@ -114,10 +114,18 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
         })
         .from(comboItems)
         .all();
-      const comboByProduct = new Map<number, Array<{ componentProductId: number; quantity: number }>>();
+
+      const comboByProduct = new Map<
+        number,
+        Array<{ componentProductId: number; quantity: number }>
+      >();
+
       for (const ci of allComboItems) {
         const list = comboByProduct.get(ci.comboProductId) ?? [];
-        list.push({ componentProductId: ci.componentProductId, quantity: ci.quantity });
+        list.push({
+          componentProductId: ci.componentProductId,
+          quantity: ci.quantity,
+        });
         comboByProduct.set(ci.comboProductId, list);
       }
 
@@ -261,8 +269,34 @@ app.post("/:collection/push", async (c) => {
   } = await c.req.json();
 
   try {
-    const receiptNumber = await generateReceiptNumber(db);
+    // Idempotent retry: if this offline document was already pushed, return
+    // the existing sale instead of inserting a duplicate.
+    if (body.clientId) {
+      const existingRows = await db
+        .select({
+          id: sales.id,
+          receiptNumber: sales.receiptNumber,
+        })
+        .from(sales)
+        .where(eq(sales.clientId, body.clientId))
+        .limit(1)
+        .all();
+    const existing = existingRows[0];
+      if (existing) {
+        return c.json({
+          success: true,
+          serverId: existing.id,
+          receiptNumber: existing.receiptNumber,
+        });
+      }
+    }
+
+    const reservationsToInsert = body.reservations ?? [];
     const usdRate = await getCurrentRate(db, "USD", "VES");
+
+    if (body.payments.some((payment) => payment.currency === "VES") && !usdRate) {
+      return c.json({ error: "No hay tasa USD→VES configurada" }, 400);
+    }
 
     // Fetch all product tax rates in one query
     const productIds = body.items.map((i) => i.productId);
@@ -276,10 +310,56 @@ app.post("/:collection/push", async (c) => {
       taxRateMap.set(p.id, p.taxRate ?? 0);
     }
 
-    const saleResult = await db
-      .insert(sales)
-      .values({
+    const receiptNumber = await generateReceiptNumber(db);
+    const saleId = sql`(SELECT id FROM sales WHERE receipt_number = ${receiptNumber})`;
+    const itemValues = body.items.map((item) => {
+      const taxRate = taxRateMap.get(item.productId) ?? 0;
+      const baseSubtotal = item.quantity * item.unitPrice;
+      const discountAmount = baseSubtotal * (item.discountPercent / 100);
+      const roundedSubtotal = Math.round((baseSubtotal - discountAmount) * 100) / 100;
+      const roundedDiscount = Math.round(discountAmount * 100) / 100;
+      const taxAmount = Math.round((roundedSubtotal * taxRate) / 100 * 100) / 100;
+      return {
+        saleId,
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discountPercent: item.discountPercent,
+        discountAmount: roundedDiscount,
+        subtotal: roundedSubtotal,
+        taxAmount,
+        total: roundedSubtotal + taxAmount,
+      };
+    });
+    const paymentValues = body.payments.map((pay) => {
+      const amountUsd = pay.currency === "VES"
+        ? Math.round((pay.amount / (usdRate ?? 1)) * 100) / 100
+        : Math.round(pay.amount * 100) / 100;
+      return {
+        saleId,
+        paymentMethodId: pay.paymentMethodId,
+        amount: amountUsd,
+        currency: pay.currency ?? "USD",
+        reference: pay.reference ?? null,
+        paymentDate: pay.paymentDate ?? null,
+        phone: pay.phone ?? null,
+        amountUsd,
+      };
+    });
+    const reservationValues = reservationsToInsert.map((reservation) => ({
+      productId: reservation.productId,
+      saleItemId: sql`(SELECT id FROM sale_items WHERE sale_id = ${saleId} AND product_id = ${reservation.productId} LIMIT 1)`,
+      checkIn: reservation.checkIn,
+      checkOut: reservation.checkOut,
+      guests: reservation.guests,
+      guestPrice: reservation.guestPrice,
+      total: reservation.total,
+    }));
+
+    const statements = [
+      db.insert(sales).values({
         receiptNumber,
+        clientId: body.clientId ?? null,
         customerId: body.customerId ?? null,
         userId: body.userId ?? null,
         tableId: body.tableId ?? null,
@@ -289,85 +369,33 @@ app.post("/:collection/push", async (c) => {
         total: 0,
         notes: body.notes ?? null,
         status: body.status ?? "completed",
-      })
-      .returning()
-      .get();
-
-    const saleId = saleResult.id;
-
-    for (const item of body.items) {
-      const taxRate = taxRateMap.get(item.productId) ?? 0;
-      const baseSubtotal = item.quantity * item.unitPrice;
-      const discountAmount = baseSubtotal * (item.discountPercent / 100);
-      const lineSubtotal = baseSubtotal - discountAmount;
-      const roundedSubtotal = Math.round(lineSubtotal * 100) / 100;
-      const roundedDiscount = Math.round(discountAmount * 100) / 100;
-      const taxAmount = Math.round(roundedSubtotal * taxRate) / 100;
-      const lineTotal = roundedSubtotal + taxAmount;
-
-      await db
-        .insert(saleItems)
-        .values({
-          saleId,
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discountPercent: item.discountPercent,
-          discountAmount: roundedDiscount,
-          subtotal: roundedSubtotal,
-          taxAmount,
-          total: lineTotal,
-        })
-        .run();
-    }
-
-    if (body.payments && body.payments.length > 0) {
-      for (const pay of body.payments) {
-        const amountUsd =
-          pay.currency && pay.currency !== "USD"
-            ? usdRate
-              ? Math.round((pay.amount / usdRate) * 100) / 100
-              : pay.amount
-            : pay.amount;
-
-        await db
-          .insert(salePayments)
-          .values({
-            saleId,
-            paymentMethodId: pay.paymentMethodId,
-            amount: Math.round(amountUsd * 100) / 100,
-            currency: pay.currency ?? "USD",
-            reference: pay.reference ?? null,
-            paymentDate: pay.paymentDate ?? null,
-            phone: pay.phone ?? null,
-            amountUsd: Math.round(amountUsd * 100) / 100,
-          })
-          .run();
-      }
-    }
-
-    if (body.reservations && body.reservations.length > 0) {
-      for (const res of body.reservations) {
-        await db
-          .insert(reservations)
-          .values({
-            productId: res.productId,
-            saleItemId: saleId,
-            checkIn: res.checkIn,
-            checkOut: res.checkOut,
-            total: res.total,
-          })
-          .run();
-      }
-    }
+      }),
+      db.insert(saleItems).values(itemValues),
+      ...(paymentValues.length ? [db.insert(salePayments).values(paymentValues)] : []),
+      ...(reservationValues.length ? [db.insert(reservations).values(reservationValues)] : []),
+    ] as const;
+    await db.batch(statements);
+    const createdSale = await db.select({ id: sales.id }).from(sales).where(eq(sales.receiptNumber, receiptNumber)).get();
+    if (!createdSale) return c.json({ error: "Sale was not created" }, 500);
 
     return c.json({
       success: true,
-      serverId: saleId,
+      serverId: createdSale.id,
       receiptNumber,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const caught = error as { message?: unknown };
+    const message = caught.message ? String(caught.message) : String(error);
+    if (message.includes("UNIQUE constraint failed: sales.client_id") && body.clientId) {
+      const existing = await db
+        .select({ id: sales.id, receiptNumber: sales.receiptNumber })
+        .from(sales)
+        .where(eq(sales.clientId, body.clientId))
+        .get();
+      if (!existing) return c.json({ error: message }, 500);
+      const { id, receiptNumber } = existing as { id: number; receiptNumber: string };
+      return c.json({ success: true, serverId: id, receiptNumber });
+    }
     return c.json({ error: message }, 500);
   }
 });
