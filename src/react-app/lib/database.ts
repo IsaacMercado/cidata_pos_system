@@ -13,6 +13,7 @@ import { replicateRxCollection } from "rxdb/plugins/replication";
 import { getRxStorageDexie } from "rxdb/plugins/storage-dexie";
 import { wrappedValidateAjvStorage } from "rxdb/plugins/validate-ajv";
 import { emitToast } from "../components/pos/Toast";
+import { notifyAuthFailure } from "./api";
 import { loadSession } from "./session";
 
 addRxPlugin(RxDBLeaderElectionPlugin);
@@ -552,6 +553,9 @@ async function pushSaleDocument(
       });
       const { text, json } = await readResponse(res);
       if (!res.ok || !json?.success) {
+        if (res.status === 401 || res.status === 403) {
+          notifyAuthFailure(res.status, "/replicate/sales/push");
+        }
         const message = json?.error || `No se pudo guardar la venta en el servidor (HTTP ${res.status})`;
         reportServerError({
           collection: "sales",
@@ -603,6 +607,7 @@ async function pushSaleDocument(
 
 async function retryPendingSales(collection: RxCollection<any>) {
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  if (typeof navigator !== "undefined" && navigator.onLine && !loadSession()?.token) return;
   const pending = await collection
     .find({ selector: { syncStatus: "pending" }, sort: [{ createdAt: "asc" }] })
     .exec();
@@ -670,6 +675,9 @@ function startReplication(collection: RxCollection<any>, name: string) {
         });
         const { text, json } = await readResponse(res);
         if (!res.ok || !json || !Array.isArray(json.documents)) {
+          if (res.status === 401 || res.status === 403) {
+            notifyAuthFailure(res.status, `/replicate/${name}/pull`);
+          }
           const message =
             json?.error ||
             `No se pudo sincronizar con el servidor (HTTP ${res.status})`;

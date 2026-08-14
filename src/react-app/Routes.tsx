@@ -9,6 +9,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { PosPage } from "./pages/PosPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage";
+import { ReconcilePage } from "./pages/ReconcilePage";
 import { RestaurantsPage } from "./pages/RestaurantsPage";
 import { SalesPage } from "./pages/SalesPage";
 import { WelcomePage } from "./pages/WelcomePage";
@@ -36,6 +37,7 @@ export default function Routes() {
             <Route path="/admin">{can("users") ? <AdminPage /> : <Redirect to="/" />}</Route>
             <Route path="/purchases">{can("purchases") ? <PurchaseOrdersPage /> : <Redirect to="/" />}</Route>
             <Route path="/exchange-rate">{can("exchange") ? <ExchangeRatePage /> : <Redirect to="/" />}</Route>
+            <Route path="/reconcile">{can("sales") ? <ReconcilePage /> : <Redirect to="/" />}</Route>
             <Route path="/hotel-pos" component={HotelPosSystem} />
           </>
         )}

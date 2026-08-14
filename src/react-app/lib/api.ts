@@ -7,6 +7,17 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
+type AuthFailureHandler = (status: 401 | 403, path: string) => void;
+let authFailureHandler: AuthFailureHandler | null = null;
+
+export function setAuthFailureHandler(handler: AuthFailureHandler | null) {
+  authFailureHandler = handler;
+}
+
+export function notifyAuthFailure(status: 401 | 403, path: string) {
+  authFailureHandler?.(status, path);
+}
+
 export class ApiError extends Error {
   status: number;
 
@@ -33,6 +44,9 @@ async function request<T>(
   const body = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    if ((res.status === 401 || res.status === 403) && !/^\/login(?:\/pin)?$/.test(path)) {
+      authFailureHandler?.(res.status, path);
+    }
     throw new ApiError(
       body.error || body.message || `HTTP ${res.status}`,
       res.status,

@@ -13,3 +13,4 @@ export { DataTable } from "./DataTable";
 export { CommandPaletteProvider, CommandRegistration, useCommandPalette } from "./CommandPalette";
 export { FormField, FormFieldLabel, FormFieldError, FormFieldHint } from "./FormField";
 export { ErrorBoundary } from "./ErrorBoundary";
+export { FileIO } from "./FileIO";

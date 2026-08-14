@@ -2,12 +2,13 @@ import type { ComponentChildren, JSX } from "preact";
 
 interface TableProps extends JSX.HTMLAttributes<HTMLTableElement> {
   children: ComponentChildren;
+  maxHeight?: string;
 }
 
-function Table({ className = "", children, ...props }: TableProps) {
+function Table({ className = "", children, maxHeight = "calc(100dvh - 14rem)", ...props }: TableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-pos-border dark:border-neutral-700">
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight }}>
         <table className={`w-full text-sm ${className}`} {...props}>
           {children}
         </table>
@@ -17,7 +18,7 @@ function Table({ className = "", children, ...props }: TableProps) {
 }
 
 function Head({ className = "", ...props }: JSX.HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={`bg-neutral-50 text-left dark:bg-neutral-800/70 ${className}`} {...props} />;
+  return <thead className={`sticky top-0 z-10 bg-neutral-50 text-left dark:bg-neutral-800/95 ${className}`} {...props} />;
 }
 
 function Header({ className = "", ...props }: JSX.HTMLAttributes<HTMLTableCellElement>) {

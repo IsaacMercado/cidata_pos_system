@@ -42,8 +42,8 @@ export function ExchangeRatePage() {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm"><thead className="bg-neutral-50 text-left dark:bg-neutral-800/70"><tr><th className="px-4 py-3">Origen</th><th className="px-4 py-3">Destino</th><th className="px-4 py-3 text-right">Tasa</th><th className="px-4 py-3">Fecha</th></tr></thead><tbody>
+            <div className="max-h-[50vh] overflow-x-auto overflow-y-auto sm:max-h-[32rem]">
+              <table className="w-full text-sm"><thead className="sticky top-0 z-10 bg-neutral-50 text-left dark:bg-neutral-800/95"><tr><th className="px-4 py-3">Origen</th><th className="px-4 py-3">Destino</th><th className="px-4 py-3 text-right">Tasa</th><th className="px-4 py-3">Fecha</th></tr></thead><tbody>
                 {rates.map((item) => <tr key={item.id} className="border-t border-neutral-100 dark:border-neutral-800"><td className="px-4 py-3 font-semibold">{item.currencyFrom}</td><td className="px-4 py-3">{item.currencyTo}</td><td className="px-4 py-3 text-right font-semibold">{item.rate.toFixed(6)}</td><td className="px-4 py-3 text-xs text-neutral-500">{item.fetchedAt}</td></tr>)}
                 {rates.length === 0 && <tr><td colSpan={4} className="px-4 py-12 text-center text-neutral-400">No hay tasas registradas</td></tr>}
               </tbody></table>

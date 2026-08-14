@@ -6,7 +6,7 @@ import {
   useState,
 } from "react";
 import { useLocation } from "wouter-preact";
-import { api } from "../lib/api";
+import { api, setAuthFailureHandler } from "../lib/api";
 import { clearSession, loadSession, saveSession } from "../lib/session";
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 import { type LoginResult } from "../pages/LoginPage";
@@ -56,6 +56,24 @@ export const AuthProvider = ({ children }: { children: ReactElement }) => {
 
   const [restoring, setRestoring] = useState(true);
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    setAuthFailureHandler((status, path) => {
+      if (status === 401) {
+        clearSession();
+        setUser(null);
+        setPermissions([]);
+        if (path !== "/users/me") navigate("/login");
+        return;
+      }
+
+      if (status === 403 && path !== "/users/me") {
+        navigate("/");
+      }
+    });
+
+    return () => setAuthFailureHandler(null);
+  }, [navigate]);
 
   useEffect(() => {
     const session = loadSession();
