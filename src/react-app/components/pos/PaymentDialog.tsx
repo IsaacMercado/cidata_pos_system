@@ -1,7 +1,7 @@
 import { Plus, Smartphone, X } from "lucide-react";
 import type { CurrencyOption } from "../../hooks/useCurrency";
 import type { PaymentInput } from "../../hooks/usePayment";
-import { PAYMENT_DIFF_TOLERANCE, PAYMENT_METHOD_MOBILE_ID } from "../../hooks/usePayment";
+import { PAYMENT_DIFF_TOLERANCE, PAYMENT_METHOD_MOBILE_ID, PAYMENT_METHOD_TRANSFER_ID } from "../../hooks/usePayment";
 import { PAYMENT_METHODS } from "../../lib/paymentMethods";
 import { Button, Dialog } from "../ui";
 
@@ -24,7 +24,7 @@ interface PaymentDialogProps {
   onRemovePayment: (index: number) => void;
   onAddPaymentSplit: () => void;
   onSubmit: () => void;
-  getMobileError: (p: PaymentInput) => string | null;
+  getPaymentDetailsError: (p: PaymentInput) => string | null;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ export function PaymentDialog({
   onRemovePayment,
   onAddPaymentSplit,
   onSubmit,
-  getMobileError,
+  getPaymentDetailsError,
 }: PaymentDialogProps) {
   return (
     <Dialog open={open} onClose={onClose}>
@@ -80,12 +80,13 @@ export function PaymentDialog({
       {/* ── Payment splits ── */}
       <div className="space-y-3 max-h-[40vh] overflow-y-auto pos-scrollbar pr-1">
         {payments.map((payment, index) => {
-          const mobileError = getMobileError(payment);
+          const paymentDetailsError = getPaymentDetailsError(payment);
           const isMobile = payment.methodId === PAYMENT_METHOD_MOBILE_ID;
+          const isTransfer = payment.methodId === PAYMENT_METHOD_TRANSFER_ID;
 
           return (
             <div key={index} className={`rounded-2xl border p-3 space-y-3 transition-colors ${
-              isMobile
+              isMobile || isTransfer
                 ? "border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-900/10"
                 : "border-slate-200 dark:border-slate-700"
             }`}>
@@ -122,14 +123,14 @@ export function PaymentDialog({
                 </button>
               </div>
 
-              {/* ── Mobile payment fields (referencia, fecha, teléfono) ── */}
-              {isMobile && (
+              {/* ── Transfer/mobile payment fields ── */}
+              {(isMobile || isTransfer) && (
                 <div className="space-y-2 border-t border-violet-200 dark:border-violet-800 pt-3">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 mb-2">
-                    <Smartphone size={14} />
-                    Datos del pago móvil
+                    {isMobile ? <Smartphone size={14} /> : null}
+                    Datos del {isMobile ? "pago móvil" : "pago por transferencia"}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className={`grid grid-cols-1 gap-2 ${isMobile ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Referencia *</label>
                       <input
@@ -139,8 +140,8 @@ export function PaymentDialog({
                         value={payment.reference}
                         onInput={(e: any) => onUpdatePayment(index, "reference", e.target.value)}
                       />
-                    </div>
-                    <div className="flex flex-col gap-1">
+                     </div>
+                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Fecha *</label>
                       <input
                         className="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-xs outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white"
@@ -148,8 +149,8 @@ export function PaymentDialog({
                         value={payment.paymentDate}
                         onInput={(e: any) => onUpdatePayment(index, "paymentDate", e.target.value)}
                       />
-                    </div>
-                    <div className="flex flex-col gap-1">
+                     </div>
+                     {isMobile && <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Teléfono *</label>
                       <input
                         className="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1.5 text-xs outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white"
@@ -158,11 +159,11 @@ export function PaymentDialog({
                         value={payment.phone}
                         onInput={(e: any) => onUpdatePayment(index, "phone", e.target.value)}
                       />
-                    </div>
+                     </div>}
                   </div>
-                  {mobileError && (
+                  {paymentDetailsError && (
                     <p className="text-[10px] text-red-500 flex items-center gap-1 mt-1">
-                      ⚠ {mobileError}
+                      ⚠ {paymentDetailsError}
                     </p>
                   )}
                 </div>

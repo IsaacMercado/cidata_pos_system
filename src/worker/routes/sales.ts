@@ -8,6 +8,7 @@ import { validateJson, validationError } from "../lib/zvalidator";
 const app = new Hono<Env>();
 
 const PAYMENT_METHOD_MOBILE_ID = 4;
+const PAYMENT_METHOD_TRANSFER_ID = 3;
 
 const saleItemInput = z.object({
   productId: z.number(),
@@ -45,11 +46,16 @@ const paySchema = z.object({
   notes: z.string().optional(),
 }).refine(
   (body) => body.payments.every((p) => {
-    if (p.paymentMethodId !== PAYMENT_METHOD_MOBILE_ID) return true;
-    return !!p.reference && !!p.paymentDate && !!p.phone;
-  }),
-  { message: "Pago móvil requiere reference, paymentDate y phone" },
-);
+     if (p.paymentMethodId === PAYMENT_METHOD_MOBILE_ID) {
+       return !!p.reference && !!p.paymentDate && !!p.phone;
+     }
+     if (p.paymentMethodId === PAYMENT_METHOD_TRANSFER_ID) {
+       return !!p.reference && !!p.paymentDate;
+     }
+     return true;
+   }),
+   { message: "Transferencia requiere reference y paymentDate; pago móvil requiere también phone" },
+ );
 
 async function getCurrentRate(db: any, currencyFrom: string, currencyTo: string): Promise<number | null> {
   if (currencyFrom === currencyTo) return 1;

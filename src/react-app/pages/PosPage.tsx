@@ -141,7 +141,7 @@ function PosPageContent() {
     addPaymentSplit,
     updatePayment,
     removePayment,
-    mobilePaymentError,
+    paymentDetailsError,
     submitPayment,
   } = paymentState;
 
@@ -343,7 +343,7 @@ function PosPageContent() {
         onRemovePayment={removePayment}
         onAddPaymentSplit={addPaymentSplit}
         onSubmit={submitPayment}
-        getMobileError={mobilePaymentError}
+        getPaymentDetailsError={paymentDetailsError}
       />
 
       <ReservationDialog

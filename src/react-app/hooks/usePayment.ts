@@ -18,6 +18,7 @@ export interface PaymentInput {
 // ─── Constants ──────────────────────────────────────────────────────────
 
 export const PAYMENT_DIFF_TOLERANCE = 0.009;
+export const PAYMENT_METHOD_TRANSFER_ID = 3;
 export const PAYMENT_METHOD_MOBILE_ID = 4;
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -129,12 +130,12 @@ export function usePayment({
     setPayments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const mobilePaymentError = useCallback(
+  const paymentDetailsError = useCallback(
     (payment: PaymentInput): string | null => {
-      if (payment.methodId !== PAYMENT_METHOD_MOBILE_ID) return null;
+      if (payment.methodId !== PAYMENT_METHOD_MOBILE_ID && payment.methodId !== PAYMENT_METHOD_TRANSFER_ID) return null;
       if (!payment.reference) return "Referencia requerida";
       if (!payment.paymentDate) return "Fecha requerida";
-      if (!payment.phone) return "Teléfono requerido";
+      if (payment.methodId === PAYMENT_METHOD_MOBILE_ID && !payment.phone) return "Teléfono requerido";
       return null;
     },
     [],
@@ -142,8 +143,8 @@ export function usePayment({
 
   const submitPayment = useCallback(async () => {
     if (Math.abs(paymentDiff) > PAYMENT_DIFF_TOLERANCE || submitting) return;
-    if (payments.some((p) => mobilePaymentError(p))) {
-      toast("Complete los datos del pago móvil", "error");
+    if (payments.some((p) => paymentDetailsError(p))) {
+      toast("Complete los datos del pago", "error");
       return;
     }
     setSubmitting(true);
@@ -307,7 +308,7 @@ export function usePayment({
     payments,
     items,
     rateMap,
-    mobilePaymentError,
+    paymentDetailsError,
     toast,
     onPaid,
   ]);
@@ -325,7 +326,7 @@ export function usePayment({
     addPaymentSplit,
     updatePayment,
     removePayment,
-    mobilePaymentError,
+    paymentDetailsError,
     submitPayment,
   };
 }
