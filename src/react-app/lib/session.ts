@@ -18,6 +18,10 @@ export interface LocalSession {
 }
 
 const KEY = "pos_session";
+const configuredMaxAge = Number(import.meta.env.VITE_OFFLINE_SESSION_MAX_AGE_MS);
+export const OFFLINE_SESSION_MAX_AGE_MS = Number.isFinite(configuredMaxAge) && configuredMaxAge > 0
+  ? configuredMaxAge
+  : 12 * 60 * 60 * 1000;
 
 export function saveSession(session: LocalSession) {
   localStorage.setItem(KEY, JSON.stringify(session));
@@ -26,7 +30,14 @@ export function saveSession(session: LocalSession) {
 export function loadSession(): LocalSession | null {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as LocalSession) : null;
+    if (!raw) return null;
+    const session = JSON.parse(raw) as LocalSession;
+    const cachedAt = Date.parse(session.cachedAt);
+    if (!session.user || !Number.isFinite(cachedAt) || Date.now() - cachedAt > OFFLINE_SESSION_MAX_AGE_MS) {
+      clearSession();
+      return null;
+    }
+    return session;
   } catch {
     return null;
   }

@@ -1,5 +1,5 @@
-import { sqliteTable, text, integer, real, uniqueIndex } from "drizzle-orm/sqlite-core";
-import { sql, relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
+import { integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // ─── Exchange Rates ──────────────────────────────────────────────────────────
 export const exchangeRates = sqliteTable("exchange_rates", {
@@ -40,9 +40,35 @@ export const products = sqliteTable("products", {
   taxRate: real("tax_rate").notNull().default(0),
   unit: text("unit").notNull().default("unit"),
   productType: text("product_type").notNull().default("simple"),
+  catalogStatus: text("catalog_status").notNull().default("active"),
   minStock: real("min_stock").notNull().default(0),
   currentStock: real("current_stock").notNull().default(0),
   isActive: integer("is_active").notNull().default(1),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  variantGroupId: integer("variant_group_id"),
+  variantAttributes: text("variant_attributes", { mode: "json" }).notNull().default("[]"),
+  variantValues: text("variant_values", { mode: "json" }).notNull().default("{}"),
+});
+
+export const variantGroups = sqliteTable("variant_groups", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  name: text("name").notNull(),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+export const variantAttributes = sqliteTable("variant_attributes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  groupId: integer("group_id").notNull().references(() => variantGroups.id),
+  name: text("name").notNull(),
+  position: integer("position").notNull().default(0),
+});
+export const productVariants = sqliteTable("product_variants", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  groupId: integer("group_id").notNull().references(() => variantGroups.id),
+  productId: integer("product_id").notNull().unique().references(() => products.id),
+  valuesJson: text("values_json", { mode: "json" }).notNull().default("{}"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
@@ -143,9 +169,19 @@ export const saleItems = sqliteTable("sale_items", {
   unitPrice: real("unit_price").notNull().default(0),
   discountPercent: real("discount_percent").notNull().default(0),
   discountAmount: real("discount_amount").notNull().default(0),
+  discounts: text("discounts", { mode: "json" }).notNull().default("[]"),
   subtotal: real("subtotal").notNull().default(0),
   taxAmount: real("tax_amount").notNull().default(0),
   total: real("total").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+// Frozen component quantities used to reverse combo sales safely.
+export const saleItemComponents = sqliteTable("sale_item_components", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  saleItemId: integer("sale_item_id").notNull().references(() => saleItems.id),
+  componentProductId: integer("component_product_id").notNull().references(() => products.id),
+  quantity: real("quantity").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
@@ -159,6 +195,23 @@ export const inventoryMovements = sqliteTable("inventory_movements", {
   referenceId: integer("reference_id"),
   notes: text("notes"),
   userId: integer("user_id").references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+// ─── Recipes / theoretical consumption ───────────────────────────────────────
+export const recipes = sqliteTable("recipes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const recipeItems = sqliteTable("recipe_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  recipeId: integer("recipe_id").notNull().references(() => recipes.id),
+  componentProductId: integer("component_product_id").notNull().references(() => products.id),
+  quantity: real("quantity").notNull(),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
@@ -217,8 +270,50 @@ export const salePayments = sqliteTable("sale_payments", {
   paymentDate: text("payment_date"),
   phone: text("phone"),
   currency: text("currency").notNull().default("USD"),
+  amountOriginal: real("amount_original"),
+  exchangeRate: real("exchange_rate"),
   amountUsd: real("amount_usd").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+// ─── Integration Queue (POS Cloudflare -> Odoo) ─────────────────────────────
+export const integrationOperations = sqliteTable(
+  "integration_operations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    operationId: text("operation_id").notNull(),
+    installationId: text("installation_id"),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    payload: text("payload").notNull(),
+    status: text("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    errorClass: text("error_class"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    processingStartedAt: text("processing_started_at"),
+    leaseToken: text("lease_token"),
+    leaseUntil: text("lease_until"),
+    nextAttemptAt: text("next_attempt_at"),
+    processedAt: text("processed_at"),
+  },
+  (table) => ({
+    operationIdIdx: uniqueIndex("integration_operations_operation_id_idx").on(table.operationId),
+  }),
+);
+
+// ─── Catalog change log (Odoo -> POS, Fase 4) ───────────────────────────────
+export const catalogChangeLog = sqliteTable("catalog_change_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  changeId: text("change_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityRef: text("entity_ref").notNull(),
+  action: text("action").notNull(),
+  payload: text("payload").notNull(),
+  appliedAt: text("applied_at"),
+  result: text("result"),
+  publishedAt: text("published_at").notNull().default(sql`(datetime('now'))`),
 });
 
 // ─── Restaurants ─────────────────────────────────────────────────────────────
@@ -276,7 +371,20 @@ export const reservations = sqliteTable("reservations", {
   guests: integer("guests").notNull().default(1),
   guestPrice: real("guest_price").notNull().default(0),
   total: real("total").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  guestName: text("guest_name"),
+  guestEmail: text("guest_email"),
+  guestPhone: text("guest_phone"),
+  customerId: integer("customer_id").references(() => customers.id),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  cancelledAt: text("cancelled_at"),
+});
+
+// Logical per-product guard used by the reservation overlap trigger.
+export const reservationGuards = sqliteTable("reservation_guards", {
+  productId: integer("product_id").primaryKey().references(() => products.id),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
 
 // ─── Relations ───────────────────────────────────────────────────────────────
@@ -346,6 +454,17 @@ export const saleItemsRelations = relations(saleItems, ({ one }) => ({
   }),
   product: one(products, {
     fields: [saleItems.productId],
+    references: [products.id],
+  }),
+}));
+
+export const saleItemComponentsRelations = relations(saleItemComponents, ({ one }) => ({
+  saleItem: one(saleItems, {
+    fields: [saleItemComponents.saleItemId],
+    references: [saleItems.id],
+  }),
+  componentProduct: one(products, {
+    fields: [saleItemComponents.componentProductId],
     references: [products.id],
   }),
 }));

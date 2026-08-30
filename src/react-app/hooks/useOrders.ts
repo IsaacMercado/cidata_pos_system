@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useCallback } from "preact/hooks";
-import { lineItemTotal } from "../lib/currency";
-import type { CartItem, ProductWithCategory } from "../lib/types";
+import { discountedLineTotal } from "../lib/currency";
+import type { CartItem, LineDiscount, ProductWithCategory } from "../lib/types";
 
 export interface Order {
   id: number;
@@ -29,7 +29,7 @@ export function useOrders(currency: string) {
   const itemCount = activeOrder.items.reduce((sum, item) => sum + item.quantity, 0);
 
   const totalDisplay = useMemo(
-    () => +activeOrder.items.reduce((sum, item) => sum + lineItemTotal(item, currency), 0),
+    () => +activeOrder.items.reduce((sum, item) => sum + discountedLineTotal(item, currency).total, 0).toFixed(2),
     [activeOrder.items, currency],
   );
 
@@ -67,6 +67,18 @@ export function useOrders(currency: string) {
       return {
         ...order,
         items: order.items.map((i) => (i.product.id === productId ? { ...i, quantity: clamped } : i)),
+      };
+    }));
+  }, [activeOrderId]);
+
+  const updateDiscounts = useCallback((productId: number, discounts: LineDiscount[]) => {
+    setOrders((prev) => prev.map((order) => {
+      if (order.id !== activeOrderId) return order;
+      return {
+        ...order,
+        items: order.items.map((i) =>
+          i.product.id === productId ? { ...i, discounts: discounts.length ? discounts : undefined } : i,
+        ),
       };
     }));
   }, [activeOrderId]);
@@ -111,6 +123,7 @@ export function useOrders(currency: string) {
     totalDisplay,
     addToCart,
     updateQuantity,
+    updateDiscounts,
     addOrder,
     removeOrder,
     switchOrder,

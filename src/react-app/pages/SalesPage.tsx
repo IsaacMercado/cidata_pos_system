@@ -5,6 +5,7 @@ import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { useToast } from "../components/pos/Toast";
 import { Badge, Button, Card, CardTitle, Dialog, Loading, PageHeader, Table } from "../components/ui";
 import { api } from "../lib/api";
+import { getSymbol } from "../lib/currency";
 import { METHOD_ICON, METHOD_LABEL } from "../lib/paymentMethods";
 import type { SaleWithItems } from "../lib/types";
 
@@ -130,23 +131,56 @@ export function SalesPage() {
                 <tr className="text-zinc-400 text-xs uppercase">
                   <th className="text-left font-medium pb-1">Producto</th>
                   <th className="text-center font-medium pb-1">Cant</th>
+                  <th className="text-right font-medium pb-1">Descuento</th>
                   <th className="text-right font-medium pb-1">Subtotal</th>
                 </tr>
               </thead>
               <tbody>
-                {(detail.items || []).map((item) => (
-                  <tr key={item.id} className="border-t border-zinc-100">
-                    <td className="py-1.5 text-zinc-800">{(item as any).name || `#${item.productId}`}</td>
-                    <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
-                    <td className="py-1.5 text-right font-medium">${item.subtotal.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {(detail.items || []).map((item) => {
+                  const anyItem = item as any;
+                  const discounts: { type: string; value: number; label?: string }[] = Array.isArray(anyItem.discounts)
+                    ? anyItem.discounts
+                    : [];
+                  const discountAmount = anyItem.discountAmount ?? 0;
+                  return (
+                    <tr key={item.id} className="border-t border-zinc-100 align-top">
+                      <td className="py-1.5 text-zinc-800">
+                        <span>{anyItem.name || `#${item.productId}`}</span>
+                        {discounts.length > 0 && (
+                          <div className="mt-0.5 space-y-0.5">
+                            {discounts.map((d, idx) => (
+                              <div key={idx} className="text-[11px] text-emerald-600 flex items-center gap-1">
+                                {d.type === "percent" ? `${d.value}%` : `${getSymbol("USD")}${d.value.toFixed(2)}`}
+                                {d.label && <span className="text-zinc-400">· {d.label}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-1.5 text-center text-zinc-600">{item.quantity}</td>
+                      <td className="py-1.5 text-right text-emerald-600">
+                        {discountAmount > 0 ? `-${getSymbol("USD")}${discountAmount.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-1.5 text-right font-medium">${item.subtotal.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
             <div className="border-t border-zinc-200 pt-3 space-y-1 text-sm">
               <div className="flex justify-between text-zinc-500">
-                <span>Subtotal</span>
+                <span>Subtotal (bruto)</span>
+                <span>${(detail.subtotal + (detail.discountTotal ?? 0)).toFixed(2)}</span>
+              </div>
+              {(detail.discountTotal ?? 0) > 0 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>Descuento</span>
+                  <span>-${(detail.discountTotal ?? 0).toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-zinc-500">
+                <span>Subtotal (neto)</span>
                 <span>${detail.subtotal?.toFixed(2)}</span>
               </div>
               {(detail.taxTotal ?? 0) > 0 && (
@@ -158,15 +192,35 @@ export function SalesPage() {
               {(detail.payments || []).map((p) => {
                 const Icon = METHOD_ICON[p.paymentMethodId];
                 const isMobile = p.paymentMethodId === 4;
+                const anyP = p as any;
+                const currency = anyP.currency || "USD";
+                const isBtc = currency !== "USD";
                 return (
-                  <div key={p.id}>
+                  <div key={p.id} className="border-t border-zinc-100 pt-1">
                     <div className="flex justify-between text-zinc-500">
                       <span className="flex items-center gap-1.5">
                         {Icon && <Icon size={14} />}
                         {METHOD_LABEL[p.paymentMethodId] || `Método #${p.paymentMethodId}`}
                       </span>
-                      <span>${p.amount.toFixed(2)}</span>
+                      <span className="font-medium">
+                        {isBtc ? (
+                          <span>
+                            {getSymbol(currency)}
+                            {(anyP.amountOriginal ?? p.amount).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span>${p.amount.toFixed(2)}</span>
+                        )}
+                      </span>
                     </div>
+                    {isBtc && (
+                      <div className="text-right text-xs text-zinc-400 mt-0.5">
+                        ≈ ${(anyP.amountUsd ?? p.amount).toFixed(2)} USD
+                        {currency === "VES" && anyP.exchangeRate ? (
+                          <span> · tasa {Number(anyP.exchangeRate).toFixed(2)}</span>
+                        ) : null}
+                      </div>
+                    )}
                     {isMobile && (p.reference || p.phone) && (
                       <div className="text-xs text-zinc-400 pl-5 mt-0.5 leading-tight">
                         {p.reference && <div>Ref: {p.reference}</div>}

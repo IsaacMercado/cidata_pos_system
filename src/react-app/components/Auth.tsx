@@ -128,7 +128,7 @@ export const AuthProvider = ({ children }: { children: ReactElement }) => {
       token: result.token,
       offline: !!result.offline,
       permissions: perms,
-      cachedAt: new Date().toISOString(),
+       cachedAt: result.offline ? (loadSession()?.cachedAt ?? new Date(0).toISOString()) : new Date().toISOString(),
     });
 
     await new Promise((r) => setTimeout(r, 0));

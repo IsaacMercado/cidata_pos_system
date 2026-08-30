@@ -10,7 +10,7 @@ import { ProductGrid } from "../components/pos/ProductGrid";
 import { ReceiptModal } from "../components/pos/ReceiptModal";
 import { ReservationDialog } from "../components/pos/ReservationDialog";
 import { useToast } from "../components/pos/Toast";
-import { Loading } from "../components/ui";
+import { Button, Loading } from "../components/ui";
 
 import { useCurrency } from "../hooks/useCurrency";
 import { useOrders } from "../hooks/useOrders";
@@ -66,7 +66,7 @@ function PosPageContent() {
     () => ({
       collection: "products",
       query: {
-        selector: { isActive: 1 },
+        selector: { isActive: 1, catalogStatus: "active" },
         sort: [{ name: "asc" as const }],
       },
     }),
@@ -115,6 +115,7 @@ function PosPageContent() {
     totalDisplay,
     addToCart,
     updateQuantity,
+    updateDiscounts,
     addOrder,
     removeOrder,
     switchOrder,
@@ -200,25 +201,45 @@ function PosPageContent() {
   const [pendingReservation, setPendingReservation] = useState<{
     product: ProductWithCategory;
   } | null>(null);
+  const [pendingVariant, setPendingVariant] = useState<ProductWithCategory | null>(null);
 
   function handleAddToCart(product: ProductWithCategory) {
     if (product.productType === "reservation") {
       setPendingReservation({ product });
       return;
     }
+    if (product.variantGroupId) {
+      setPendingVariant(product);
+      return;
+    }
     addToCart(product);
+  }
+
+  function selectVariant(product: ProductWithCategory) {
+    addToCart(product);
+    setPendingVariant(null);
   }
 
   function handleReservationConfirm(data: {
     checkIn: string;
     checkOut: string;
     total: number;
+    guests: number;
+    guestPrice: number;
+    guestName: string;
+    guestEmail: string;
+    guestPhone: string;
   }) {
     if (!pendingReservation) return;
     addToCart(pendingReservation.product, {
       checkIn: data.checkIn,
       checkOut: data.checkOut,
       total: data.total,
+      guests: data.guests,
+      guestPrice: data.guestPrice,
+      guestName: data.guestName,
+      guestEmail: data.guestEmail,
+      guestPhone: data.guestPhone,
     });
     setPendingReservation(null);
   }
@@ -289,6 +310,7 @@ function PosPageContent() {
     onRemoveOrder: removeOrder,
     onOpenPay: openPayDialog,
     onUpdateQuantity: updateQuantity,
+    onUpdateDiscounts: updateDiscounts,
   };
 
   return (
@@ -352,6 +374,24 @@ function PosPageContent() {
         onConfirm={handleReservationConfirm}
         onClose={() => setPendingReservation(null)}
       />
+
+      {pendingVariant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl dark:bg-zinc-900">
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Selecciona una variante</h2>
+            <p className="mt-1 text-sm text-zinc-500">{pendingVariant.name}</p>
+            <div className="mt-4 grid gap-2">
+              {products.filter((product) => product.variantGroupId === pendingVariant.variantGroupId).map((product) => (
+                <Button key={product.id} variant="outline" className="justify-between" onClick={() => selectVariant(product)} disabled={product.currentStock <= 0 && product.productType === "simple"}>
+                  <span>{product.name} {Object.values(product.variantValues || {}).join(" / ")}</span>
+                  <span>${product.price.toFixed(2)}</span>
+                </Button>
+              ))}
+            </div>
+            <Button variant="ghost" className="mt-3 w-full" onClick={() => setPendingVariant(null)}>Cancelar</Button>
+          </div>
+        </div>
+      )}
 
       {receiptSale && (
         <ReceiptModal sale={receiptSale} onClose={() => setReceiptSale(null)} />

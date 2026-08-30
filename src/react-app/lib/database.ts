@@ -9,6 +9,7 @@ import {
 import { RxDBDevModePlugin, disableWarnings } from "rxdb/plugins/dev-mode";
 import { RxDBLeaderElectionPlugin } from "rxdb/plugins/leader-election";
 import { RxDBJsonDumpPlugin } from "rxdb/plugins/json-dump";
+import { RxDBMigrationSchemaPlugin } from "rxdb/plugins/migration-schema";
 import { replicateRxCollection } from "rxdb/plugins/replication";
 import { getRxStorageDexie } from "rxdb/plugins/storage-dexie";
 import { wrappedValidateAjvStorage } from "rxdb/plugins/validate-ajv";
@@ -18,6 +19,7 @@ import { loadSession } from "./session";
 
 addRxPlugin(RxDBLeaderElectionPlugin);
 addRxPlugin(RxDBJsonDumpPlugin);
+addRxPlugin(RxDBMigrationSchemaPlugin);
 if (import.meta.env.DEV) disableWarnings();
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
@@ -48,11 +50,15 @@ export interface ProductDoc {
   taxRate: number;
   unit: string;
   productType: string;
+  catalogStatus: string;
   minStock: number;
   currentStock: number;
   isActive: number;
   rates: ProductRate[];
   comboItems: ComboItemRef[];
+  variantGroupId?: number | null;
+  variantAttributes: string[];
+  variantValues: Record<string, string>;
   createdAt: string;
   updatedAt: string;
   _deleted: boolean;
@@ -92,6 +98,7 @@ export interface SaleItemData {
   quantity: number;
   unitPrice: number;
   discountPercent: number;
+  discounts?: import("./types").LineDiscount[];
 }
 
 export interface SalePaymentData {
@@ -108,6 +115,8 @@ export interface ReservationData {
   checkIn: string;
   checkOut: string;
   total: number;
+  guests?: number;
+  guestPrice?: number;
 }
 
 export interface SaleDoc {
@@ -141,14 +150,13 @@ export interface OperatorDoc {
   name: string;
   role: string;
   isSuperuser: number;
-  pinHash: string;
   updatedAt: string;
   _deleted: boolean;
 }
 
 const productSchema: RxJsonSchema<ProductDoc> = {
   title: "product",
-  version: 0,
+  version: 1,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -165,6 +173,7 @@ const productSchema: RxJsonSchema<ProductDoc> = {
     taxRate: { type: "number" },
     unit: { type: "string" },
     productType: { type: "string", default: "simple" },
+    catalogStatus: { type: "string", default: "active" },
     minStock: { type: "number" },
     currentStock: { type: "number" },
     isActive: { type: "number", multipleOf: 1, minimum: 0, maximum: 1 },
@@ -192,6 +201,9 @@ const productSchema: RxJsonSchema<ProductDoc> = {
         },
       },
     },
+    variantGroupId: { type: ["number", "null"] },
+    variantAttributes: { type: "array", default: [], items: { type: "string" } },
+    variantValues: { type: "object", default: {} },
     createdAt: { type: "string" },
     updatedAt: { type: "string" },
     _deleted: { type: "boolean", default: false },
@@ -251,7 +263,7 @@ const restaurantTableSchema: RxJsonSchema<RestaurantTableDoc> = {
 
 const operatorSchema: RxJsonSchema<OperatorDoc> = {
   title: "operator",
-  version: 0,
+  version: 1,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -261,7 +273,6 @@ const operatorSchema: RxJsonSchema<OperatorDoc> = {
     name: { type: "string" },
     role: { type: "string" },
     isSuperuser: { type: "number" },
-    pinHash: { type: "string" },
     updatedAt: { type: "string" },
     _deleted: { type: "boolean", default: false },
   },
@@ -272,7 +283,6 @@ const operatorSchema: RxJsonSchema<OperatorDoc> = {
     "name",
     "role",
     "isSuperuser",
-    "pinHash",
     "updatedAt",
   ],
   indexes: ["username"],
@@ -280,7 +290,7 @@ const operatorSchema: RxJsonSchema<OperatorDoc> = {
 
 const saleSchema: RxJsonSchema<SaleDoc> = {
   title: "sale",
-  version: 0,
+  version: 1,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -297,19 +307,31 @@ const saleSchema: RxJsonSchema<SaleDoc> = {
     total: { type: "number" },
     status: { type: "string", maxLength: 50 },
     notes: { type: ["string", "null"] },
-    items: {
-      type: "array",
-      default: [],
-      items: {
-        type: "object",
-        properties: {
-          productId: { type: "number" },
-          quantity: { type: "number" },
-          unitPrice: { type: "number" },
-          discountPercent: { type: "number" },
+        items: {
+          type: "array",
+          default: [],
+          items: {
+            type: "object",
+            properties: {
+              productId: { type: "number" },
+              quantity: { type: "number" },
+              unitPrice: { type: "number" },
+              discountPercent: { type: "number" },
+              discounts: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    type: { type: "string" },
+                    value: { type: "number" },
+                    label: { type: ["string", "null"] },
+                  },
+                },
+              },
+            },
+          },
         },
-      },
-    },
     payments: {
       type: "array",
       default: [],
@@ -368,9 +390,12 @@ export type RxCollections = {
   sales: RxCollection<SaleDoc>;
 };
 
-let dbPromise: Promise<RxDatabase<RxCollections>> | null = null;
-
 const DB_NAME = "pos_offline";
+
+type DatabaseRuntime = { promise: Promise<RxDatabase<RxCollections>> | null };
+const databaseRuntime = ((globalThis as typeof globalThis & {
+  __posDatabaseRuntime?: DatabaseRuntime;
+}).__posDatabaseRuntime ??= { promise: null });
 
 function makeStorage() {
   return wrappedValidateAjvStorage({ storage: getRxStorageDexie() });
@@ -392,11 +417,34 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
   });
 
   await db.addCollections({
-    products: { schema: productSchema },
+    products: {
+      schema: productSchema,
+      migrationStrategies: {
+        1: (doc: ProductDoc) => ({
+          ...doc,
+          variantGroupId: doc.variantGroupId ?? null,
+          variantAttributes: doc.variantAttributes ?? [],
+          variantValues: doc.variantValues ?? {},
+        }),
+      },
+    },
     restaurants: { schema: restaurantSchema },
     restaurant_tables: { schema: restaurantTableSchema },
-    operators: { schema: operatorSchema },
-    sales: { schema: saleSchema },
+    operators: {
+      schema: operatorSchema,
+      migrationStrategies: { 1: (doc: any) => { delete doc.pinHash; return doc; } },
+    },
+    sales: {
+      schema: saleSchema,
+      migrationStrategies: {
+        1: (doc: any) => ({
+          ...doc,
+          items: (doc.items || []).map((item: any) =>
+            item.discounts ? item : { ...item, discounts: [] },
+          ),
+        }),
+      },
+    },
   });
 
   startReplication(db.products, "products");
@@ -410,24 +458,7 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
 };
 
 const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      return await createDatabase();
-    } catch (err) {
-      const rxErr = err as any;
-      if (attempt === 0) {
-        console.warn(
-          "RxDB init error — retrying without deleting local data:",
-          rxErr?.code ?? rxErr?.message,
-        );
-        // Never delete the local database automatically. It may contain sales
-        // waiting for replication and must be preserved for backup/recovery.
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw new Error("RxDB init failed after retry without deleting local data");
+  return createDatabase();
 };
 
 function authHeaders(): HeadersInit {
@@ -514,16 +545,37 @@ function reportServerError(info: SyncErrorInfo) {
 
 function buildPushBody(docData: any) {
   return {
-    clientId: docData.clientId,
-    rxid: docData.rxid,
-    items: docData.items,
-    payments: docData.payments,
-    customerId: docData.customerId,
-    userId: docData.userId,
-    tableId: docData.tableId,
-    notes: docData.notes,
-    status: docData.status,
-    reservations: docData.reservations,
+    clientId: String(docData.clientId || docData.rxid),
+    rxid: String(docData.rxid || docData.clientId),
+    items: (docData.items || []).map((item: any) => ({
+      productId: Number(item.productId),
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPrice),
+      discounts: Array.isArray(item.discounts)
+        ? item.discounts.map((d: any) => ({
+            type: String(d.type),
+            value: Number(d.value),
+            ...(d.label ? { label: String(d.label) } : {}),
+          }))
+        : [],
+      discountPercent: Number(item.discountPercent || 0),
+      discountAmount: Number(item.discountAmount || 0),
+    })),
+    payments: (docData.payments || []).map((payment: any) => ({
+      paymentMethodId: Number(payment.paymentMethodId),
+      amount: Number(payment.amount),
+      currency: payment.currency || "USD",
+      ...(payment.amountOriginal != null ? { amountOriginal: Number(payment.amountOriginal) } : {}),
+      ...(payment.reference ? { reference: String(payment.reference) } : {}),
+      ...(payment.paymentDate ? { paymentDate: String(payment.paymentDate) } : {}),
+      ...(payment.phone ? { phone: String(payment.phone) } : {}),
+    })),
+    ...(docData.customerId != null ? { customerId: Number(docData.customerId) } : {}),
+    ...(docData.userId != null ? { userId: Number(docData.userId) } : {}),
+    ...(docData.tableId != null ? { tableId: Number(docData.tableId) } : {}),
+    ...(docData.notes != null ? { notes: String(docData.notes) } : {}),
+    status: docData.status === "completed" ? "completed" : "in_progress",
+    ...(Array.isArray(docData.reservations) ? { reservations: docData.reservations } : {}),
   };
 }
 
@@ -734,9 +786,9 @@ function startPushReplication(collection: RxCollection<any>) {
 
 export async function resetDatabase() {
   try {
-    const db = await dbPromise?.catch(() => null);
+    const db = await databaseRuntime.promise?.catch(() => null);
     await db?.close();
-    dbPromise = null;
+    databaseRuntime.promise = null;
     await removeRxDatabase(DB_NAME, getRxStorageDexie());
   } catch (e) {
     console.warn("Error resetting database:", e);
@@ -760,11 +812,11 @@ export async function downloadDatabaseBackup() {
 }
 
 export const getDatabase = (): Promise<RxDatabase<RxCollections>> => {
-  if (!dbPromise) {
-    dbPromise = getDatabaseInner().catch((e) => {
-      dbPromise = null;
+  if (!databaseRuntime.promise) {
+    databaseRuntime.promise = getDatabaseInner().catch((e) => {
+      databaseRuntime.promise = null;
       throw e;
     });
   }
-  return dbPromise;
+  return databaseRuntime.promise;
 };

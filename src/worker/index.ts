@@ -6,12 +6,14 @@ import authRouter from "./routes/auth";
 import comboItemsRouter from "./routes/combo-items";
 import customersRouter from "./routes/customers";
 import exchangeRouter from "./routes/exchange";
+import integrationRouter from "./routes/integration";
 import inventoryRouter from "./routes/inventory";
 import productsRouter from "./routes/products";
 import purchasesRouter from "./routes/purchases";
 import reconcileRouter from "./routes/reconcile";
 import replicateRouter from "./routes/replicate";
 import reservationRatesRouter from "./routes/reservation-rates";
+import reservationsRouter from "./routes/reservations";
 import restaurantsRouter from "./routes/restaurants";
 import salesRouter from "./routes/sales";
 import { updateRatesFromBcv } from "./routes/exchange";
@@ -21,11 +23,13 @@ export interface Env {
     DB: D1Database;
     ASSETS: Fetcher;
     JWT_SECRET: string;
+    INTEGRATION_TOKEN: string;
   };
   Variables: {
     db: ReturnType<typeof createDb>;
     env: Env["Bindings"];
     jwtPayload: Record<string, unknown>;
+    integrationAuth?: { kind: "static" | "jwt"; sub?: unknown };
   };
 }
 
@@ -81,10 +85,14 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-// Auth global: protege todo /api/* excepto los endpoints de login (públicos).
+// Auth global: protege todo /api/* excepto los endpoints de login (públicos)
+// y los de integración (usan su propio token de servicio).
 app.use("/api/*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
   if (path === "/api/login" || path === "/api/login/pin") {
+    return next();
+  }
+  if (path.startsWith("/api/integration/")) {
     return next();
   }
   return middlewareJwtPayload(c, next);
@@ -98,6 +106,8 @@ app.use("/api/combo-items", requireScreenPermission("products"));
 app.use("/api/combo-items/*", requireScreenPermission("products"));
 app.use("/api/reservation-rates", requireScreenPermission("products"));
 app.use("/api/reservation-rates/*", requireScreenPermission("products"));
+app.use("/api/reservations", requireScreenPermission("sales"));
+app.use("/api/reservations/*", requireScreenPermission("sales"));
 app.use("/api/sales", requireScreenPermission("sales"));
 app.use("/api/sales/*", requireScreenPermission("sales"));
 app.use("/api/customers", requireScreenPermission("customers"));
@@ -121,6 +131,7 @@ app.get("/health", (c) =>
 app.route("/api/products", productsRouter);
 app.route("/api/combo-items", comboItemsRouter);
 app.route("/api/reservation-rates", reservationRatesRouter);
+app.route("/api/reservations", reservationsRouter);
 app.route("/api/sales", salesRouter);
 app.route("/api/customers", customersRouter);
 app.route("/api/inventory", inventoryRouter);
@@ -130,6 +141,7 @@ app.route("/api/exchange-rate", exchangeRouter);
 app.route("/api/reconcile", reconcileRouter);
 app.route("/api", authRouter);
 app.route("/api/replicate", replicateRouter);
+app.route("/api/integration", integrationRouter);
 
 app.notFound(async (c) => {
   const url = new URL(c.req.url);

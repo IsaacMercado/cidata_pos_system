@@ -37,6 +37,7 @@ interface ProductCardProps {
 }
 
 function ProductCard({ product, currency, symbol, onAddToCart }: ProductCardProps) {
+  const hasVariants = !!product.variantGroupId;
   const priceDisplay = priceInCurrency(product, currency);
   const Icon = getCategoryIcon(product.category?.name ?? "");
   const showUsdEquiv = currency !== "USD";
@@ -71,6 +72,7 @@ function ProductCard({ product, currency, symbol, onAddToCart }: ProductCardProp
         </span>
       )}
 
+      {hasVariants && <span className="text-[10px] text-violet-600">Variantes</span>}
       <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
         {symbol}{priceDisplay.toFixed(2)}
       </span>

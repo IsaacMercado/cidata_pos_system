@@ -5,14 +5,12 @@ import {
   Package,
   Receipt,
   ShoppingCart,
-  Users,
   UtensilsCrossed,
   Warehouse,
 } from "lucide-react";
 import { useState } from "preact/hooks";
 
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
-// import { OfflineBanner } from "./components/OfflineBanner";
 import { AuthProvider } from "./components/Auth";
 import { ToastProvider } from "./components/pos/Toast";
 import { Sidebar } from "./components/Sidebar";
@@ -53,15 +51,6 @@ const globalCommands = [
     icon: <Package size={16} />,
     action: () => (window.location.href = "/products"),
     keywords: ["inventario", "stock", "articulos"],
-  },
-  {
-    id: "nav-customers",
-    label: "Ir a Clientes",
-    description: "Administrar clientes",
-    shortcut: "G C",
-    icon: <Users size={16} />,
-    action: () => (window.location.href = "/customers"),
-    keywords: ["cliente", "clientes"],
   },
   {
     id: "nav-sales",

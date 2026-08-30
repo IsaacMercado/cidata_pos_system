@@ -7,19 +7,19 @@ import { TableMap } from "../components/pos/TableMap";
 import { TableOrderPanel } from "../components/pos/TableOrderPanel";
 import { TablePicker } from "../components/pos/TablePicker";
 import { useToast } from "../components/pos/Toast";
-import { Button, CardContent, CardHeader, CardTitle, Loading } from "../components/ui";
+import { Button, Loading } from "../components/ui";
 import { api } from "../lib/api";
-import { getDatabase, type ProductDoc, type RestaurantDoc, type RestaurantTableDoc, type RxCollections } from '../lib/database';
+import { getDatabase, type ProductDoc, type RestaurantDoc, type RestaurantTableDoc, type SaleDoc, type RxCollections } from '../lib/database';
 import { useOnlineStatus } from "../lib/useOnlineStatus";
 
 type DraftMap = Record<number, any[]>;
 
-const labelByStatus: Record<string, string> = {
-  available: "Libre",
-  occupied: "En servicio",
-  reserved: "Reservada",
-  maintenance: "Mantenimiento",
-};
+function localItems(items: any[], products: any[]) {
+  return items.map((item) => {
+    const product = products.find((candidate) => candidate.id === item.productId);
+    return { ...item, name: item.name || product?.name || `Prod #${item.productId}`, total: item.total ?? item.unitPrice * item.quantity };
+  });
+}
 
 export function RestaurantsPage() {
   const [db, setDb] = useState<RxDatabase<RxCollections> | null>(null);
@@ -47,6 +47,7 @@ function RestaurantsPageContent() {
   const { toast } = useToast();
 
   const [restaurant, setRestaurant] = useState<any | null>(null);
+  const [loadingRestaurant, setLoadingRestaurant] = useState(true);
 
   const [products, setProducts] = useState<any[]>([]);
   const [productQuery, setProductQuery] = useState("");
@@ -67,7 +68,7 @@ function RestaurantsPageContent() {
   useEffect(() => {
     void loadRestaurant();
     if (view === "order") void loadProducts();
-  }, [view, online]);
+  }, [view, online, restaurantCollection, restaurantTableCollection, productsCollection]);
 
   useEffect(() => {
     if (!restaurant || view !== "order") return;
@@ -76,21 +77,41 @@ function RestaurantsPageContent() {
     if (!selectedTableId || !tables.some((t: any) => t.id === selectedTableId)) {
       void selectTable(tables[0]);
     }
-  }, [restaurant, view, selectTable, selectedTableId]);
+  }, [restaurant, view, selectedTableId]);
 
   async function loadRestaurant() {
-    if (!restaurantCollection || !restaurantTableCollection) { setRestaurant(null); return; }
-    const rows = await restaurantCollection.find().exec();
-    const first = rows[0];
-    if (!first) { setRestaurant(null); return; }
-    const r = first.toJSON();
-    const tables = await restaurantTableCollection.find({ selector: { restaurantId: r.id } }).exec();
-    setRestaurant({ ...r, tables: tables.map((t) => t.toJSON()) });
-  }
+    if (!restaurantCollection || !restaurantTableCollection) return;
+    setLoadingRestaurant(true);
+    try {
+      const rows = await restaurantCollection.find({ selector: { isActive: 1 }, sort: [{ updatedAt: "desc" }] }).exec();
+      let r = rows[0]?.toJSON() as any;
+      if (!r && online) {
+        const remote = await api.restaurants.list();
+        r = remote[0];
+      }
+      if (!r) { setRestaurant(null); return; }
+      let tables = await restaurantTableCollection.find({ selector: { restaurantId: r.id, isActive: 1 } }).exec();
+      if (tables.length === 0 && online) {
+        const remote = await api.restaurants.get(r.id);
+        r = remote;
+        tables = [];
+        if (remote.tables?.length) {
+          await restaurantTableCollection.bulkUpsert(remote.tables.map((table: any) => ({ ...table, rxid: String(table.id), _deleted: false })));
+          tables = await restaurantTableCollection.find({ selector: { restaurantId: r.id, isActive: 1 } }).exec();
+        }
+      }
+      setRestaurant({ ...r, tables: tables.map((t) => t.toJSON()) });
+    } catch (error) {
+      setRestaurant(null);
+      toast(error instanceof Error ? error.message : "No se pudo cargar el restaurante", "error");
+    } finally {
+      setLoadingRestaurant(false);
+    }
+}
 
   async function loadProducts() {
     if (!productsCollection) { setProducts([]); return; }
-    const rows = await productsCollection.find({ selector: { isActive: 1 } }).exec();
+    const rows = await productsCollection.find({ selector: { isActive: 1, catalogStatus: "active" } }).exec();
     setProducts(rows.map((r) => r.toJSON()));
 }
 
@@ -113,19 +134,23 @@ function removeTable(tableId: number) {
     setPlanExpanded(false);
     setLoadingTable(true);
 
-    if (!online) {
-      setActiveOrder(null);
-      setSavedItems([]);
-      setLoadingTable(false);
-      return;
-    }
-
     try {
-      const openSales = await api.sales.list({ tableId: table.id, status: "in_progress", limit: 1 });
-      if (openSales.length > 0) {
-        const sale = await api.sales.get(openSales[0].id);
-        setActiveOrder(sale);
-        setSavedItems(sale.items || []);
+      const localSales = await getDatabase();
+      const rows = await localSales.sales.find({ selector: { tableId: table.id, status: "in_progress" }, sort: [{ createdAt: "asc" }] }).exec();
+      const localSale = rows[0]?.toJSON();
+      if (localSale) {
+        setActiveOrder(localSale);
+        setSavedItems(localItems([...(localSale.items || [])], products));
+      } else if (online) {
+        const openSales = await api.sales.list({ tableId: table.id, status: "in_progress", limit: 1 });
+        if (openSales.length > 0) {
+          const sale = await api.sales.get(openSales[0].id);
+          setActiveOrder(sale);
+          setSavedItems(sale.items || []);
+        } else {
+          setActiveOrder(null);
+          setSavedItems([]);
+        }
       } else {
         setActiveOrder(null);
         setSavedItems([]);
@@ -182,22 +207,37 @@ function removeTable(tableId: number) {
   async function saveOrder() {
     if (!currentTable || draftItems.length === 0 || submitting) return;
     setSubmitting(true);
-    const payload = {
-      items: draftItems.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discountPercent: item.discountPercent,
-      })),
-    };
+    const newItems = draftItems.map((item) => ({ productId: item.productId, quantity: item.quantity, unitPrice: item.unitPrice, discountPercent: item.discountPercent }));
     try {
-      let updated;
-      if (activeOrder) updated = await api.sales.addItems(activeOrder.id, payload);
-      else updated = await api.sales.create({ ...payload, tableId: currentTable.id, status: "in_progress" });
+      if (activeOrder && !activeOrder.rxid) {
+        if (!online) throw new Error("Esta cuenta del servidor debe sincronizarse antes de agregar productos offline");
+        const updated = await api.sales.addItems(activeOrder.id, { items: newItems });
+        setActiveOrder(updated);
+        setSavedItems(updated.items || []);
+        clearDraftForTable(currentTable.id);
+        return;
+      }
+      const db = await getDatabase();
+      const now = new Date().toISOString();
+      const clientId = activeOrder?.clientId || `table-${currentTable.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const items = activeOrder ? [...(activeOrder.items || []), ...newItems] : newItems;
+      const subtotal = items.reduce((sum: number, item: any) => sum + item.quantity * item.unitPrice * (1 - (item.discountPercent || 0) / 100), 0);
+      const taxTotal = items.reduce((sum: number, item: any) => {
+        const product = products.find((candidate) => candidate.id === item.productId);
+        return sum + (item.quantity * item.unitPrice * (1 - (item.discountPercent || 0) / 100) * (product?.taxRate || 0)) / 100;
+      }, 0);
+      const updated: SaleDoc = {
+        rxid: activeOrder?.rxid || clientId, clientId, serverId: activeOrder?.serverId || null,
+        customerId: null, userId: null, tableId: currentTable.id, tableName: currentTable.name,
+        subtotal, taxTotal, discountTotal: 0, total: subtotal + taxTotal, status: "in_progress", notes: null,
+        items, payments: [], syncStatus: "pending", receiptNumber: activeOrder?.receiptNumber || `LOCAL-${Date.now()}`,
+        createdAt: activeOrder?.createdAt || now, updatedAt: now, _deleted: false,
+      };
+      if (activeOrder) await db.sales.upsert(updated);
+      else await db.sales.insert(updated);
       setActiveOrder(updated);
-      setSavedItems(updated.items || []);
+      setSavedItems(localItems(updated.items || [], products));
       clearDraftForTable(currentTable.id);
-      await loadRestaurant();
     } catch (error) {
       toast(error instanceof Error ? error.message : "Error al guardar", "error");
     }
@@ -230,17 +270,30 @@ function removeTable(tableId: number) {
     if (!activeOrder || !currentTable || Math.abs(paymentDiff) > 0.009 || submitting) return;
     setSubmitting(true);
     try {
-      await api.sales.pay(activeOrder.id, {
-        payments: payments.map((payment) => ({
-          paymentMethodId: payment.methodId,
-          amount: parseFloat(payment.amount),
-        })),
+      if (!activeOrder.rxid) {
+        if (!online) throw new Error("Esta cuenta del servidor debe sincronizarse antes de cobrar offline");
+        await api.sales.pay(activeOrder.id, {
+          payments: payments.map((payment) => ({ paymentMethodId: payment.methodId, amount: parseFloat(payment.amount) })),
+        });
+        setPayDialog(false);
+        setActiveOrder(null);
+        setSavedItems([]);
+        await selectTable(currentTable);
+        return;
+      }
+      const db = await getDatabase();
+      const target = await db.sales.findOne(activeOrder.rxid).exec();
+      if (!target) throw new Error("La cuenta local ya no existe");
+      await target.incrementalPatch({
+        status: "completed",
+        payments: payments.map((payment) => ({ paymentMethodId: payment.methodId, amount: parseFloat(payment.amount), currency: "USD" })),
+        syncStatus: "pending",
+        updatedAt: new Date().toISOString(),
       });
       setPayDialog(false);
       setActiveOrder(null);
       setSavedItems([]);
       clearDraftForTable(currentTable.id);
-      await loadRestaurant();
       await selectTable(currentTable);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Error al cobrar", "error");
@@ -252,7 +305,14 @@ function removeTable(tableId: number) {
     ? products.filter((product: any) => product.name?.toLowerCase().includes(productQuery.toLowerCase()) || product.code?.toLowerCase().includes(productQuery.toLowerCase()))
     : products;
 
-  if (!restaurant) return <div className="py-10 text-sm text-slate-500">Cargando restaurante...</div>;
+  if (loadingRestaurant) return <Loading text="Cargando restaurante..." />;
+  if (!restaurant) return (
+    <div className="mx-auto max-w-xl p-8 text-center">
+      <h2 className="text-lg font-semibold text-slate-800">Restaurante no configurado</h2>
+      <p className="mt-2 text-sm text-slate-500">Configura el restaurante y sus mesas en Odoo, sincroniza el catálogo y vuelve a cargar esta pantalla.</p>
+      {!online && <p className="mt-3 text-sm font-medium text-amber-700">Estás sin conexión y no hay una copia local disponible.</p>}
+    </div>
+  );
 
   if (view === "layout") {
     return (
@@ -272,16 +332,18 @@ function removeTable(tableId: number) {
   }
 
   const tables = restaurant.tables || [];
-  const currentDraftCount = currentTable ? draftItems.length : 0;
-
   return (
     <div className="p-4 sm:p-6">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold">{restaurant.name}</h2>
-          <p className="text-sm text-slate-500">Selecciona una mesa, agrega productos y vuelve cuando quieras.</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-600">Sala de servicio</p>
+          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900">{restaurant.name}</h2>
+          <p className="mt-1 text-sm text-slate-500">Selecciona una mesa y gestiona su cuenta desde un solo lugar.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => navigate("/restaurants/layout")}>Editar plano</Button>
+        <div className="flex items-center gap-2">
+          <span className={`hidden rounded-full px-3 py-2 text-xs font-semibold sm:inline-flex ${online ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{online ? "En línea" : "Modo offline"}</span>
+          <Button variant="outline" size="sm" onClick={() => navigate("/restaurants/layout")}>Editar plano</Button>
+        </div>
       </div>
 
       <PaymentDialog
@@ -300,7 +362,7 @@ function removeTable(tableId: number) {
         onSubmitPayment={submitPayment}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)_340px]">
+      <div className="grid items-start gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
         <TablePicker
           tables={tables}
           selectedTableId={selectedTableId}
@@ -309,58 +371,8 @@ function removeTable(tableId: number) {
           getTableSummary={getTableSummary}
         />
 
-        <section className="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-[0_20px_45px_rgba(15,23,42,0.08)]">
-          <CardHeader className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>{currentTable ? currentTable.name : "Selecciona una mesa"}</CardTitle>
-              <p className="text-sm text-slate-500">{currentTable ? `${labelByStatus[currentTable.status] || currentTable.status} · ${currentTable.capacity} personas` : "Elige una mesa para cargar productos."}</p>
-            </div>
-            {currentTable && (
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-                {activeOrder ? `Orden abierta ${activeOrder.receiptNumber}` : currentDraftCount > 0 ? "Borrador local" : currentTable.openReceiptNumber ? `Orden abierta ${currentTable.openReceiptNumber}` : "Sin orden"}
-              </div>
-            )}
-          </CardHeader>
-
-          <div className="relative mb-4">
-            <svg className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input
-              className="w-full rounded-2xl border border-slate-300 bg-white py-3 pl-9 pr-3 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/15"
-              placeholder="Buscar productos para la mesa..."
-              value={productQuery}
-              onInput={(e: any) => setProductQuery(e.target.value)}
-            />
-          </div>
-
-          {!currentTable && (
-            <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
-              Selecciona una mesa para empezar a cargar la cuenta.
-            </div>
-          )}
-
-          {currentTable && (
-            <CardContent className="pb-0">
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-3">
-                {filteredProducts.map((product: any) => (
-                  <button
-                    key={product.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-violet-300 hover:shadow-sm disabled:opacity-40"
-                    onClick={() => addToDraft(product)}
-                    disabled={product.currentStock <= 0 || loadingTable}
-                  >
-                    <div className="mb-2 truncate text-sm font-semibold">{product.name}</div>
-                    <div className="text-lg font-bold text-violet-700">${product.price.toFixed(2)}</div>
-                    <div className="mt-2 text-[0.7rem] text-slate-400">Stock {product.currentStock} {product.unit}</div>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          )}
-        </section>
-
         <TableOrderPanel
           currentTable={currentTable}
-          restaurant={restaurant}
           activeOrder={activeOrder}
           draftItems={draftItems}
           savedItems={savedItems}
@@ -380,5 +392,3 @@ function removeTable(tableId: number) {
     </div>
   );
 }
-
-

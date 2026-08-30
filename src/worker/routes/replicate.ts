@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { ZodError } from "zod";
 import {
   categories,
   comboItems,
@@ -13,8 +14,11 @@ import {
   sales,
   sequences,
   users,
+  paymentMethods,
 } from "../db/schema";
 import type { Env } from "../index";
+import { reservationTotal, salePushSchema, validatePaymentDetails, computeSaleItemValues } from "../lib/sales-contract";
+import { enqueueSaleOutboxStatement } from "../lib/integration";
 
 async function getCurrentRate(
   db: any,
@@ -153,14 +157,18 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
       cost: row.products.cost,
       taxRate: row.products.taxRate,
       unit: row.products.unit,
-      productType: row.products.productType,
+       productType: row.products.productType,
+       catalogStatus: row.products.catalogStatus,
       minStock: row.products.minStock,
       currentStock: row.products.currentStock,
       isActive: row.products.isActive,
       createdAt: row.products.createdAt,
-      updatedAt: row.products.updatedAt,
+       updatedAt: row.products.updatedAt,
+       variantGroupId: row.products.variantGroupId,
+       variantAttributes: row.products.variantAttributes ?? [],
+       variantValues: row.products.variantValues ?? {},
       rates: row._rates ?? [],
-      comboItems: row._comboItems ?? [],
+       comboItems: row._comboItems ?? [],
       _deleted: false,
     }),
   },
@@ -194,7 +202,6 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
           name: users.name,
           role: users.role,
           isSuperuser: users.isSuperuser,
-          pinHash: users.pinHash,
           updatedAt: users.updatedAt,
         })
         .from(users)
@@ -236,37 +243,18 @@ app.post("/:collection/push", async (c) => {
     return c.json({ error: "Unknown collection" }, 400);
 
   const db = c.get("db");
-  const body: {
-    clientId: string;
-    rxid: string;
-    items: Array<{
-      productId: number;
-      quantity: number;
-      unitPrice: number;
-      discountPercent: number;
-    }>;
-    payments: Array<{
-      paymentMethodId: number;
-      amount: number;
-      currency?: string;
-      reference?: string;
-      paymentDate?: string;
-      phone?: string;
-    }>;
-    customerId?: number;
-    userId?: number;
-    tableId?: number;
-    notes?: string;
-    status?: string;
-    reservations?: Array<{
-      productId: number;
-      checkIn: string;
-      checkOut: string;
-      guests: number;
-      guestPrice: number;
-      total: number;
-    }>;
-  } = await c.req.json();
+  let body: import("../lib/sales-contract").SalePushInput;
+  try {
+    body = salePushSchema.parse(await c.req.json());
+  } catch (error) {
+    const details = error instanceof ZodError
+      ? error.issues.map((issue) => ({ path: issue.path, message: issue.message, code: issue.code }))
+      : String(error);
+    return c.json({ error: "Invalid sale payload", details }, 400);
+  }
+  if (!validatePaymentDetails(body.payments)) {
+    return c.json({ error: "Transferencia requiere referencia y fecha; pago móvil requiere también teléfono" }, 400);
+  }
 
   try {
     // Idempotent retry: if this offline document was already pushed, return
@@ -281,13 +269,73 @@ app.post("/:collection/push", async (c) => {
         .where(eq(sales.clientId, body.clientId))
         .limit(1)
         .all();
-    const existing = existingRows[0];
-      if (existing) {
-        return c.json({
-          success: true,
-          serverId: existing.id,
-          receiptNumber: existing.receiptNumber,
+      const existing = existingRows[0];
+      if (existing && body.status === "in_progress") {
+        const productRows = await db
+          .select({ id: products.id, taxRate: products.taxRate, isActive: products.isActive, catalogStatus: products.catalogStatus })
+          .from(products)
+          .where(inArray(products.id, body.items.map((item) => item.productId)))
+          .all();
+        if (productRows.length !== new Set(body.items.map((item) => item.productId)).size || productRows.some((product) => !product.isActive || product.catalogStatus !== "active")) {
+          return c.json({ error: "La venta contiene un producto inexistente, pendiente de revisión o inactivo" }, 400);
+        }
+        const taxRateMap = new Map(productRows.map((product) => [product.id, product.taxRate ?? 0]));
+        const itemValues = body.items.map((item) => {
+          const computed = computeSaleItemValues(existing.id, item, taxRateMap.get(item.productId) ?? 0);
+          return {
+            saleId: existing.id,
+            productId: computed.productId,
+            quantity: computed.quantity,
+            unitPrice: computed.unitPrice,
+            discountPercent: computed.discountPercent,
+            discountAmount: computed.discountAmount,
+            discounts: computed.discounts,
+            subtotal: computed.subtotal,
+            taxAmount: computed.taxAmount,
+            total: computed.total,
+          };
         });
+        const subtotal = itemValues.reduce((sum, item) => sum + item.subtotal, 0);
+        const taxTotal = itemValues.reduce((sum, item) => sum + item.taxAmount, 0);
+        const discountTotal = itemValues.reduce((sum, item) => sum + item.discountAmount, 0);
+        await db.batch([
+           db.delete(saleItems).where(eq(saleItems.saleId, existing.id)),
+           db.insert(saleItems).values(itemValues),
+           db.update(sales).set({ subtotal, taxTotal, discountTotal, total: subtotal + taxTotal, tableId: body.tableId ?? undefined, notes: body.notes ?? undefined }).where(eq(sales.id, existing.id)),
+         ]);
+        return c.json({ success: true, serverId: existing.id, receiptNumber: existing.receiptNumber });
+      }
+      if (existing && body.status === "completed") {
+        const existingSale = await db.select({ id: sales.id, total: sales.total, status: sales.status }).from(sales).where(eq(sales.id, existing.id)).get();
+        if (existingSale?.status === "completed") return c.json({ success: true, serverId: existing.id, receiptNumber: existing.receiptNumber });
+        const usdRate = await getCurrentRate(db, "USD", "VES");
+        if (body.payments.some((payment) => payment.currency === "VES") && !usdRate) return c.json({ error: "No hay tasa USD→VES configurada" }, 400);
+        const paymentValues = body.payments.map((payment) => {
+          const hasOriginal = payment.amountOriginal != null;
+          const amountUsd = hasOriginal || payment.currency !== "VES"
+            ? Math.round(payment.amount * 100) / 100
+            : Math.round((payment.amount / (usdRate ?? 1)) * 100) / 100;
+          return {
+            saleId: existing.id,
+            paymentMethodId: payment.paymentMethodId,
+            amount: amountUsd,
+            currency: payment.currency ?? "USD",
+            amountOriginal: payment.amountOriginal ?? null,
+            exchangeRate: payment.currency === "VES" ? (payment.exchangeRate ?? usdRate) : null,
+            reference: payment.reference ?? null,
+            paymentDate: payment.paymentDate ?? null,
+            phone: payment.phone ?? null,
+            amountUsd,
+          };
+        });
+        if (Math.abs(paymentValues.reduce((sum, payment) => sum + payment.amountUsd, 0) - Number(existingSale?.total ?? 0)) > 0.01) return c.json({ error: "La suma de pagos no coincide con el total de la venta" }, 400);
+        await db.batch([
+           db.delete(salePayments).where(eq(salePayments.saleId, existing.id)),
+           db.insert(salePayments).values(paymentValues),
+           db.update(sales).set({ status: "completed" }).where(eq(sales.id, existing.id)),
+           enqueueSaleOutboxStatement(db, { id: existing.id, clientId: body.clientId ?? null, receiptNumber: existing.receiptNumber }, "completed"),
+         ]);
+        return c.json({ success: true, serverId: existing.id, receiptNumber: existing.receiptNumber });
       }
     }
 
@@ -301,7 +349,7 @@ app.post("/:collection/push", async (c) => {
     // Fetch all product tax rates in one query
     const productIds = body.items.map((i) => i.productId);
     const productRows = await db
-      .select({ id: products.id, taxRate: products.taxRate })
+      .select({ id: products.id, taxRate: products.taxRate, productType: products.productType, isActive: products.isActive, catalogStatus: products.catalogStatus })
       .from(products)
       .where(inArray(products.id, productIds))
       .all();
@@ -309,43 +357,93 @@ app.post("/:collection/push", async (c) => {
     for (const p of productRows) {
       taxRateMap.set(p.id, p.taxRate ?? 0);
     }
+    if (productRows.length !== new Set(productIds).size) {
+      return c.json({ error: "La venta contiene productos inexistentes" }, 400);
+    }
+    if (productRows.some((product) => !product.isActive || product.catalogStatus !== "active")) {
+      return c.json({ error: "La venta contiene un producto pendiente de revisión o inactivo" }, 400);
+    }
+    for (const reservation of reservationsToInsert) {
+      const product = productRows.find((row) => row.id === reservation.productId);
+      if (!product || product.productType !== "reservation") {
+        return c.json({ error: "La reservación debe referirse a un producto de tipo reservation" }, 400);
+      }
+      const expectedTotal = reservationTotal(reservation);
+      if (Math.abs(expectedTotal - reservation.total) > 0.01) {
+        return c.json({ error: "El total de la reservación no coincide con sus noches y precio" }, 400);
+      }
+      const overlap = await db
+        .select({ id: reservations.id })
+        .from(reservations)
+        .innerJoin(saleItems, eq(saleItems.id, reservations.saleItemId))
+        .innerJoin(sales, eq(sales.id, saleItems.saleId))
+        .where(and(
+          eq(reservations.productId, reservation.productId),
+          lt(reservations.checkIn, reservation.checkOut),
+          gt(reservations.checkOut, reservation.checkIn),
+          ne(sales.status, "cancelled"),
+        ))
+        .limit(1)
+        .get();
+      if (overlap) return c.json({ error: "El producto ya está reservado para esas fechas" }, 409);
+    }
+    for (let i = 0; i < reservationsToInsert.length; i++) {
+      for (let j = i + 1; j < reservationsToInsert.length; j++) {
+        const a = reservationsToInsert[i];
+        const b = reservationsToInsert[j];
+        if (a.productId === b.productId && a.checkIn < b.checkOut && a.checkOut > b.checkIn) {
+          return c.json({ error: "La venta contiene reservaciones solapadas para el mismo producto" }, 409);
+        }
+      }
+    }
+    const methodRows = await db.select({ id: paymentMethods.id, isActive: paymentMethods.isActive }).from(paymentMethods).where(inArray(paymentMethods.id, body.payments.map((payment) => payment.paymentMethodId))).all();
+    if (methodRows.length !== new Set(body.payments.map((payment) => payment.paymentMethodId)).size || methodRows.some((method) => !method.isActive)) {
+      return c.json({ error: "La venta contiene un método de pago inexistente o inactivo" }, 400);
+    }
 
     const receiptNumber = await generateReceiptNumber(db);
     const saleId = sql`(SELECT id FROM sales WHERE receipt_number = ${receiptNumber})`;
     const itemValues = body.items.map((item) => {
-      const taxRate = taxRateMap.get(item.productId) ?? 0;
-      const baseSubtotal = item.quantity * item.unitPrice;
-      const discountAmount = baseSubtotal * (item.discountPercent / 100);
-      const roundedSubtotal = Math.round((baseSubtotal - discountAmount) * 100) / 100;
-      const roundedDiscount = Math.round(discountAmount * 100) / 100;
-      const taxAmount = Math.round((roundedSubtotal * taxRate) / 100 * 100) / 100;
+      const computed = computeSaleItemValues(0, item, taxRateMap.get(item.productId) ?? 0);
       return {
         saleId,
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discountPercent: item.discountPercent,
-        discountAmount: roundedDiscount,
-        subtotal: roundedSubtotal,
-        taxAmount,
-        total: roundedSubtotal + taxAmount,
+        productId: computed.productId,
+        quantity: computed.quantity,
+        unitPrice: computed.unitPrice,
+        discountPercent: computed.discountPercent,
+        discountAmount: computed.discountAmount,
+        discounts: computed.discounts,
+        subtotal: computed.subtotal,
+        taxAmount: computed.taxAmount,
+        total: computed.total,
       };
     });
     const paymentValues = body.payments.map((pay) => {
-      const amountUsd = pay.currency === "VES"
-        ? Math.round((pay.amount / (usdRate ?? 1)) * 100) / 100
-        : Math.round(pay.amount * 100) / 100;
+      const hasOriginal = pay.amountOriginal != null;
+      const amountUsd = hasOriginal || pay.currency !== "VES"
+        ? Math.round(pay.amount * 100) / 100
+        : Math.round((pay.amount / (usdRate ?? 1)) * 100) / 100;
       return {
         saleId,
         paymentMethodId: pay.paymentMethodId,
         amount: amountUsd,
         currency: pay.currency ?? "USD",
+        amountOriginal: pay.amountOriginal ?? null,
+        exchangeRate: pay.currency === "VES" ? (pay.exchangeRate ?? usdRate) : null,
         reference: pay.reference ?? null,
         paymentDate: pay.paymentDate ?? null,
         phone: pay.phone ?? null,
         amountUsd,
       };
     });
+    const calculatedTotal = itemValues.reduce((sum, item) => sum + Number(item.total), 0);
+    const calculatedSubtotal = itemValues.reduce((sum, item) => sum + Number(item.subtotal), 0);
+    const calculatedTax = itemValues.reduce((sum, item) => sum + Number(item.taxAmount), 0);
+    const calculatedDiscount = itemValues.reduce((sum, item) => sum + Number(item.discountAmount), 0);
+    const paidTotal = paymentValues.reduce((sum, payment) => sum + payment.amountUsd, 0);
+    if (body.status === "completed" && Math.abs(Math.round(calculatedTotal * 100) / 100 - Math.round(paidTotal * 100) / 100) > 0.01) {
+      return c.json({ error: "La suma de pagos no coincide con el total de la venta" }, 400);
+    }
     const reservationValues = reservationsToInsert.map((reservation) => ({
       productId: reservation.productId,
       saleItemId: sql`(SELECT id FROM sale_items WHERE sale_id = ${saleId} AND product_id = ${reservation.productId} LIMIT 1)`,
@@ -354,6 +452,11 @@ app.post("/:collection/push", async (c) => {
       guests: reservation.guests,
       guestPrice: reservation.guestPrice,
       total: reservation.total,
+      status: "pending",
+      guestName: reservation.guestName,
+      guestEmail: reservation.guestEmail,
+      guestPhone: reservation.guestPhone,
+      customerId: reservation.customerId,
     }));
 
     const statements = [
@@ -363,21 +466,22 @@ app.post("/:collection/push", async (c) => {
         customerId: body.customerId ?? null,
         userId: body.userId ?? null,
         tableId: body.tableId ?? null,
-        subtotal: 0,
-        taxTotal: 0,
-        discountTotal: 0,
-        total: 0,
+         subtotal: calculatedSubtotal,
+         taxTotal: calculatedTax,
+         discountTotal: calculatedDiscount,
+         total: calculatedTotal,
         notes: body.notes ?? null,
-        status: body.status ?? "completed",
+        status: "in_progress",
       }),
       db.insert(saleItems).values(itemValues),
       ...(paymentValues.length ? [db.insert(salePayments).values(paymentValues)] : []),
       ...(reservationValues.length ? [db.insert(reservations).values(reservationValues)] : []),
+      ...(body.status === "completed" ? [db.update(sales).set({ status: "completed" }).where(eq(sales.clientId, body.clientId))] : []),
+      ...(body.status === "completed" ? [enqueueSaleOutboxStatement(db, { id: 0, clientId: body.clientId ?? null, receiptNumber }, "completed")] : []),
     ] as const;
     await db.batch(statements);
     const createdSale = await db.select({ id: sales.id }).from(sales).where(eq(sales.receiptNumber, receiptNumber)).get();
     if (!createdSale) return c.json({ error: "Sale was not created" }, 500);
-
     return c.json({
       success: true,
       serverId: createdSale.id,

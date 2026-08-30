@@ -6,7 +6,7 @@ import { users, userPermissions } from "../db/schema";
 
 // Iteraciones ajustadas al límite de CPU del free tier de Cloudflare (~10ms/req).
 // El login online es un evento raro; el resto de requests solo verifica el JWT (microsegundos).
-// El PIN offline se verifica en el dispositivo (sin límite de CPU), reutilizando este mismo formato.
+// Los PIN solo se verifican online; nunca se exponen sus hashes al navegador.
 export const PBKDF2_ITERATIONS = 10_000;
 const PBKDF2_ALGO = { name: "PBKDF2", hash: "SHA-256" } as const;
 

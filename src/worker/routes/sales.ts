@@ -1,21 +1,18 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { exchangeRates, products, saleItems, salePayments, sales, sequences } from "../db/schema";
+import { exchangeRates, paymentMethods, products, reservations, saleItems, salePayments, sales, sequences } from "../db/schema";
 import type { Env } from "../index";
 import { validateJson, validationError } from "../lib/zvalidator";
+import { enqueueSaleOutboxStatement } from "../lib/integration";
+import { reservationSchema, reservationTotal, saleItemSchema, salePaymentSchema, validatePaymentDetails, computeSaleItemValues } from "../lib/sales-contract";
 
 const app = new Hono<Env>();
 
 const PAYMENT_METHOD_MOBILE_ID = 4;
 const PAYMENT_METHOD_TRANSFER_ID = 3;
 
-const saleItemInput = z.object({
-  productId: z.number(),
-  quantity: z.number().min(0.001),
-  unitPrice: z.number().min(0),
-  discountPercent: z.number().min(0).max(100).default(0),
-});
+const saleItemInput = saleItemSchema;
 
 const createSaleSchema = z.object({
   customerId: z.number().optional(),
@@ -23,37 +20,23 @@ const createSaleSchema = z.object({
   paymentMethodId: z.number().optional(),
   notes: z.string().optional(),
   tableId: z.number().optional(),
-  status: z.enum(["in_progress", "completed"]).default("completed"),
+  status: z.enum(["in_progress", "completed"]).default("in_progress"),
   items: z.array(saleItemInput).min(1),
+  reservations: z.array(reservationSchema).optional(),
 });
 
 const addItemsSchema = z.object({
   items: z.array(saleItemInput).min(1),
 });
 
-const paymentInput = z.object({
-  paymentMethodId: z.number(),
-  amount: z.number().min(0.01),
-  currency: z.enum(["USD", "VES"]).default("USD"),
-  reference: z.string().optional(),
-  paymentDate: z.string().optional(),
-  phone: z.string().optional(),
-});
+const paymentInput = salePaymentSchema;
 
 const paySchema = z.object({
   payments: z.array(paymentInput).min(1),
   customerId: z.number().optional(),
   notes: z.string().optional(),
 }).refine(
-  (body) => body.payments.every((p) => {
-     if (p.paymentMethodId === PAYMENT_METHOD_MOBILE_ID) {
-       return !!p.reference && !!p.paymentDate && !!p.phone;
-     }
-     if (p.paymentMethodId === PAYMENT_METHOD_TRANSFER_ID) {
-       return !!p.reference && !!p.paymentDate;
-     }
-     return true;
-   }),
+   (body) => validatePaymentDetails(body.payments),
    { message: "Transferencia requiere reference y paymentDate; pago móvil requiere también phone" },
  );
 
@@ -90,22 +73,19 @@ function insertSaleItemValues(
   item: z.infer<typeof saleItemInput>,
   taxRate = 0,
 ) {
-  const baseSubtotal = item.quantity * item.unitPrice;
-  const discountAmount = baseSubtotal * (item.discountPercent / 100);
-  const subtotal = baseSubtotal - discountAmount;
-  const roundedSubtotal = Math.round(subtotal * 100) / 100;
-  const taxAmount = Math.round((roundedSubtotal * taxRate) / 100 * 100) / 100;
+  const computed = computeSaleItemValues(saleId, item, taxRate);
 
   return {
     saleId,
-    productId: item.productId,
-    quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    discountPercent: item.discountPercent,
-    discountAmount: Math.round(discountAmount * 100) / 100,
-    subtotal: roundedSubtotal,
-    taxAmount,
-    total: roundedSubtotal + taxAmount,
+    productId: computed.productId,
+    quantity: computed.quantity,
+    unitPrice: computed.unitPrice,
+    discountPercent: computed.discountPercent,
+    discountAmount: computed.discountAmount,
+    discounts: computed.discounts,
+    subtotal: computed.subtotal,
+    taxAmount: computed.taxAmount,
+    total: computed.total,
   };
 }
 
@@ -148,6 +128,7 @@ function asClientError(error: unknown) {
   if (
     message.includes("PAYMENT_TOTAL_MISMATCH") ||
     message.includes("PAYMENT_EXCEEDS_TOTAL") ||
+    message.includes("PAYMENT_METHOD_INVALID") ||
     message.includes("STOCK_INSUFFICIENT")
   ) {
     return { error: message.split(": ").slice(1).join(": ") || message };
@@ -166,18 +147,61 @@ app.post("/", async (c) => {
   }
 
   try {
+    if (body.status === "completed") {
+      return c.json({ error: "Una venta completada debe registrarse mediante /pay con sus pagos" }, 400);
+    }
     const receiptNumber = await generateReceiptNumber(db);
     const productRows = await db
-      .select({ id: products.id, taxRate: products.taxRate })
+      .select({ id: products.id, taxRate: products.taxRate, productType: products.productType, isActive: products.isActive, catalogStatus: products.catalogStatus })
       .from(products)
       .where(inArray(products.id, body.items.map((item) => item.productId)))
       .all();
-    const taxRateMap = new Map(productRows.map((product) => [product.id, product.taxRate]));
+      const taxRateMap = new Map(productRows.map((product) => [product.id, product.taxRate]));
+    if (productRows.length !== new Set(body.items.map((item) => item.productId)).size) {
+      return c.json({ error: "La venta contiene productos inexistentes" }, 400);
+    }
+    const invalidProduct = productRows.find((product) => !product.isActive || product.catalogStatus !== "active");
+    if (invalidProduct) {
+      return c.json({ error: "El producto no está habilitado para operar; revise su ficha de catálogo" }, 400);
+    }
     const saleId = sql`(SELECT id FROM sales WHERE receipt_number = ${receiptNumber})`;
     const itemValues = body.items.map((item) => ({
       ...insertSaleItemValues(0, item, taxRateMap.get(item.productId) ?? 0),
       saleId,
     }));
+    for (const reservation of body.reservations ?? []) {
+      const product = productRows.find((row) => row.id === reservation.productId);
+      if (!product || product.productType !== "reservation") {
+        return c.json({ error: "La reservación debe referirse a un producto de tipo reservation" }, 400);
+      }
+      if (Math.abs(reservationTotal(reservation) - reservation.total) > 0.01) {
+        return c.json({ error: "El total de la reservación no coincide con sus noches y precio" }, 400);
+      }
+      const overlap = await db
+        .select({ id: reservations.id })
+        .from(reservations)
+        .innerJoin(saleItems, eq(saleItems.id, reservations.saleItemId))
+        .innerJoin(sales, eq(sales.id, saleItems.saleId))
+        .where(and(
+          eq(reservations.productId, reservation.productId),
+          lt(reservations.checkIn, reservation.checkOut),
+          gt(reservations.checkOut, reservation.checkIn),
+          ne(sales.status, "cancelled"),
+        ))
+        .limit(1)
+        .get();
+      if (overlap) return c.json({ error: "El producto ya está reservado para esas fechas" }, 409);
+    }
+    const incomingReservations = body.reservations ?? [];
+    for (let i = 0; i < incomingReservations.length; i++) {
+      for (let j = i + 1; j < incomingReservations.length; j++) {
+        const a = incomingReservations[i];
+        const b = incomingReservations[j];
+        if (a.productId === b.productId && a.checkIn < b.checkOut && a.checkOut > b.checkIn) {
+          return c.json({ error: "La venta contiene reservaciones solapadas para el mismo producto" }, 409);
+        }
+      }
+    }
 
     await db.batch([
       db.insert(sales).values({
@@ -194,6 +218,20 @@ app.post("/", async (c) => {
         status: body.status,
       }),
       db.insert(saleItems).values(itemValues),
+      ...(body.reservations?.length ? [db.insert(reservations).values(body.reservations.map((reservation) => ({
+        productId: reservation.productId,
+        saleItemId: sql`(SELECT id FROM sale_items WHERE sale_id = ${saleId} AND product_id = ${reservation.productId} LIMIT 1)`,
+        checkIn: reservation.checkIn,
+        checkOut: reservation.checkOut,
+        guests: reservation.guests,
+        guestPrice: reservation.guestPrice,
+         total: reservation.total,
+         status: "pending",
+         guestName: reservation.guestName,
+         guestEmail: reservation.guestEmail,
+         guestPhone: reservation.guestPhone,
+         customerId: reservation.customerId,
+       })))] : []),
     ]);
 
     const createdSale = await db.select({ id: sales.id }).from(sales).where(eq(sales.receiptNumber, receiptNumber)).get();
@@ -295,12 +333,24 @@ app.post("/:id/pay", async (c) => {
   const usdRate = await getCurrentRate(db, "USD", "VES");
   if (!usdRate) return c.json({ error: "No hay tasa USD→VES configurada" }, 400);
 
+  const methodRows = await db
+    .select({ id: paymentMethods.id, isActive: paymentMethods.isActive })
+    .from(paymentMethods)
+    .where(inArray(paymentMethods.id, body.payments.map((payment) => payment.paymentMethodId)))
+    .all();
+  if (methodRows.length !== new Set(body.payments.map((payment) => payment.paymentMethodId)).size || methodRows.some((method) => !method.isActive)) {
+    return c.json({ error: "La venta contiene un método de pago inexistente o inactivo" }, 400);
+  }
+
   const paymentValues = await Promise.all(body.payments.map(async (p) => {
+    const exchangeRate = p.currency === "VES" ? usdRate : null;
     const amountUsd = p.currency === "VES" ? +(p.amount / usdRate).toFixed(2) : p.amount;
     return {
       saleId: id,
       paymentMethodId: p.paymentMethodId,
       amount: Math.round(amountUsd * 100) / 100,
+      amountOriginal: p.amount,
+      exchangeRate,
       amountUsd: Math.round(amountUsd * 100) / 100,
       currency: p.currency,
       reference: p.reference || null,
@@ -308,6 +358,10 @@ app.post("/:id/pay", async (c) => {
       phone: p.phone || null,
     };
   }));
+  const paidTotal = paymentValues.reduce((sum, payment) => sum + payment.amountUsd, 0);
+  if (Math.abs(Math.round(paidTotal * 100) / 100 - Math.round(sale.total * 100) / 100) > 0.01) {
+    return c.json({ error: "La suma de pagos no coincide con el total de la venta" }, 400);
+  }
 
   try {
     await db.batch([
@@ -321,6 +375,7 @@ app.post("/:id/pay", async (c) => {
           paymentMethodId: paymentValues.length === 1 ? paymentValues[0].paymentMethodId : null,
         })
         .where(eq(sales.id, id)),
+      enqueueSaleOutboxStatement(db, sale, "completed"),
     ]);
   } catch (error) {
     const clientError = asClientError(error);
@@ -346,13 +401,13 @@ app.post("/:id/cancel", async (c) => {
   if (sale.status === "cancelled") return c.json({ error: "Sale already cancelled" }, 400);
 
   const result = await db
-    .update(sales)
-    .set({ status: "cancelled" })
-    .where(eq(sales.id, id))
-    .returning()
-    .get();
+    .batch([
+      db.update(sales).set({ status: "cancelled" }).where(eq(sales.id, id)),
+      enqueueSaleOutboxStatement(db, sale, "cancelled"),
+    ]);
 
-  return c.json({ data: result });
+  const cancelled = await db.select().from(sales).where(eq(sales.id, id)).get();
+  return c.json({ data: cancelled });
 });
 
 export default app;

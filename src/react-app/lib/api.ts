@@ -80,6 +80,16 @@ export const api = {
 
     deactivate: (id: number) =>
       request<{ success: boolean }>(`/products/${id}`, { method: "DELETE" }),
+
+    variantGroups: () => request<any[]>("/products/variant-groups"),
+    createVariantGroup: (data: { productId: number; name: string; attributes?: string[] }) =>
+      request<any>("/products/variant-groups", { method: "POST", body: JSON.stringify(data) }),
+    listVariantAttributes: (groupId: number) => request<any[]>(`/products/variant-groups/${groupId}/attributes`),
+    createVariantAttribute: (groupId: number, data: { name: string; position?: number }) =>
+      request<any>(`/products/variant-groups/${groupId}/attributes`, { method: "POST", body: JSON.stringify(data) }),
+    listVariants: (groupId: number) => request<any[]>(`/products/variant-groups/${groupId}/variants`),
+    createVariant: (groupId: number, data: { productId: number; values: Record<string, string> }) =>
+      request<any>(`/products/variant-groups/${groupId}/variants`, { method: "POST", body: JSON.stringify(data) }),
   },
 
   comboItems: {
@@ -141,6 +151,14 @@ export const api = {
         unitPrice: number;
         discountPercent: number;
       }[];
+      reservations?: {
+        productId: number;
+        checkIn: string;
+        checkOut: string;
+        guests: number;
+        guestPrice: number;
+        total: number;
+      }[];
       customerId?: number;
       paymentMethodId?: number;
       notes?: string;
@@ -182,6 +200,15 @@ export const api = {
       request<{ success: boolean }>(`/sales/${id}/cancel`, { method: "POST" }),
   },
 
+  reservations: {
+    availability: (params: { productId: number; checkIn: string; checkOut: string }) =>
+      request<{ available: boolean; conflicts: Array<{ id: number; checkIn: string; checkOut: string }> }>(`/reservations/availability?${new URLSearchParams(params as any)}`),
+    list: (params?: { status?: string; productId?: number }) => request<any[]>(`/reservations${params ? "?" + new URLSearchParams(params as any) : ""}`),
+    create: (data: any) => request<any>("/reservations", { method: "POST", body: JSON.stringify(data) }),
+    changeStatus: (id: number, status: string) => request<any>(`/reservations/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+    cancel: (id: number) => request<any>(`/reservations/${id}/cancel`, { method: "POST" }),
+  },
+
   inventory: {
     stock: (lowStock?: boolean) =>
       request<any[]>(`/inventory/stock${lowStock ? "?lowStock=true" : ""}`),
@@ -191,6 +218,19 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    count: (data: { productId: number; countedStock: number; notes?: string }) =>
+      request<any>("/inventory/count", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    recipe: (productId: number) => request<any>(`/inventory/recipes/${productId}`),
+    saveRecipe: (productId: number, items: { componentProductId: number; quantity: number }[]) =>
+      request<any>(`/inventory/recipes/${productId}`, {
+        method: "PUT",
+        body: JSON.stringify({ productId, items }),
+      }),
+    consumption: (from: string, to: string) =>
+      request<any[]>(`/inventory/consumption?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   },
 
   restaurants: {

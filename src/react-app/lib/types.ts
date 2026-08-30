@@ -16,6 +16,7 @@ export interface ProductRate {
 }
 
 export type ProductType = "simple" | "combo" | "reservation";
+export type CatalogStatus = "active" | "needs_review" | "inactive";
 
 export interface Product {
   id: number;
@@ -29,11 +30,15 @@ export interface Product {
   taxRate: number;
   unit: string;
   productType: ProductType;
+  catalogStatus: CatalogStatus;
   minStock: number;
   currentStock: number;
   isActive: number;
   rates?: ProductRate[];
   comboItems?: Array<{ componentProductId: number; quantity: number }>;
+  variantGroupId?: number | null;
+  variantAttributes?: string[];
+  variantValues?: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +65,26 @@ export interface Customer {
 
 export type PaymentMethodCode = "cash" | "card" | "transfer" | "mobile";
 export type SaleStatus = "in_progress" | "completed" | "cancelled" | "refunded";
+
+// ─── Per-line discounts ──────────────────────────────────────────────────────
+// A product line can carry one or more discounts applied sequentially. Each
+// discount is either a fixed amount (in the currency shown at the TPV) or a
+// percentage of the running subtotal.
+export type DiscountType = "fixed" | "percent";
+
+export interface LineDiscount {
+  id: string;
+  type: DiscountType;
+  value: number;
+  label?: string;
+}
+
+export function newDiscountId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `disc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export interface SalePayment {
   id: number;
@@ -115,9 +140,15 @@ export interface SaleWithItems extends Sale {
 export interface CartItem {
   product: ProductWithCategory;
   quantity: number;
+  discounts?: LineDiscount[];
   reservation?: {
     checkIn: string;
     checkOut: string;
     total: number;
+    guests: number;
+    guestPrice: number;
+    guestName?: string;
+    guestEmail?: string;
+    guestPhone?: string;
   };
 }

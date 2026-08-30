@@ -3,8 +3,6 @@ import { SubmitHandler, useForm } from "react-hook-form";
 import { useLocation } from "wouter-preact";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from "../components/ui";
 import { api } from "../lib/api";
-import { getDatabase } from "../lib/database";
-import { verifyPin } from "../lib/pin";
 import { loadSession } from "../lib/session";
 
 interface EmailForm {
@@ -84,40 +82,8 @@ export function LoginPage({ onLogin }: { onLogin: (result: LoginResult) => Promi
       }
     }
 
-    try {
-      const db = await getDatabase();
-      const op = await db.operators.findOne({ selector: { username } }).exec();
-      if (!op) {
-        setError("Sin conexión y operador no sincronizado. Conéctate a internet.");
-        return;
-      }
-
-      const cached = op.toJSON();
-      const ok = await verifyPin(pin, cached.pinHash);
-      if (!ok) {
-        setError("PIN incorrecto");
-        return;
-      }
-
-      await onLogin({
-        user: {
-          id: cached.id,
-          email: "",
-          username: cached.username,
-          name: cached.name,
-          role: cached.role,
-          permissions: (cached as any).permissions ?? [],
-          isSuperuser: cached.isSuperuser,
-        },
-        token: null,
-        success: true,
-        offline: true,
-      });
-    } catch {
-      setError("No se pudo verificar el PIN localmente");
-    } finally {
-      setLoading(false);
-    }
+    setError("Sin conexión: la sesión offline ya debe estar abierta en este dispositivo.");
+    setLoading(false);
   };
 
   return (

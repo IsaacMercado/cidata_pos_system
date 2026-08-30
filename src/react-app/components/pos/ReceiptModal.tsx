@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "preact/hooks";
+import { getSymbol } from "../../lib/currency";
 import type { SaleWithItems } from "../../lib/types";
 import { Button } from "../ui";
 
@@ -85,20 +86,43 @@ export function ReceiptModal({
         <div className="border-t border-zinc-200 pt-3 space-y-1 text-sm">
           <div className="flex justify-between text-zinc-500">
             <span>Subtotal</span>
-            <span>${sale.subtotal.toFixed(2)}</span>
+            <span>${(sale.subtotal + (sale.discountTotal ?? 0)).toFixed(2)}</span>
           </div>
+          {(sale.discountTotal ?? 0) > 0 && (
+            <div className="flex justify-between text-emerald-600">
+              <span>Descuento</span>
+              <span>-${(sale.discountTotal ?? 0).toFixed(2)}</span>
+            </div>
+          )}
           {(sale.taxTotal ?? 0) > 0 && (
             <div className="flex justify-between text-zinc-500">
               <span>IVA ({((sale.taxTotal / (sale.subtotal || 1)) * 100).toFixed(1)}%)</span>
               <span>${(sale.taxTotal ?? 0).toFixed(2)}</span>
             </div>
           )}
-          {(sale.payments || []).map((p, i) => (
-            <div key={p.id ?? i} className="flex justify-between text-zinc-500">
-              <span>{methodLabel[p.paymentMethodId] || `Método ${p.paymentMethodId}`}</span>
-              <span>${p.amount.toFixed(2)}</span>
-            </div>
-          ))}
+          {(sale.payments || []).map((p, i) => {
+            const anyP = p as any;
+            const currency = anyP.currency || "USD";
+            const isBtc = currency !== "USD";
+            return (
+              <div key={p.id ?? i} className="flex justify-between text-zinc-500">
+                <span>{methodLabel[p.paymentMethodId] || `Método ${p.paymentMethodId}`}</span>
+                <span className="text-right">
+                  {isBtc ? (
+                    <>
+                      {getSymbol(currency)}
+                      {(anyP.amountOriginal ?? p.amount).toFixed(2)}
+                    </>
+                  ) : (
+                    <>${p.amount.toFixed(2)}</>
+                  )}
+                  {isBtc && (
+                    <span className="block text-[10px] text-zinc-400">≈ ${(anyP.amountUsd ?? p.amount).toFixed(2)} USD</span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
           <div className="flex justify-between text-base font-bold text-zinc-800 pt-1 border-t border-zinc-100">
             <span>Total</span>
             <span>${sale.total.toFixed(2)}</span>

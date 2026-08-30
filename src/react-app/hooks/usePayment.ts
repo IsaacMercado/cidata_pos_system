@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo } from "preact/hooks";
 import { getDatabase } from "../lib/database";
 import { useToast } from "../components/pos/Toast";
+import { applyDiscounts } from "../lib/currency";
 import type { SaleDoc } from "../lib/database";
-import type { CartItem } from "../lib/types";
+import type { CartItem, LineDiscount } from "../lib/types";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -158,31 +159,40 @@ export function usePayment({
     let discountTotal = 0;
     let taxTotal = 0;
     const saleItems = items.map((item) => {
-      const unitPrice = item.product.price;
-      const quantity = item.quantity;
-      const discountPercent = 0;
+       const unitPrice = item.reservation ? item.reservation.total : item.product.price;
+       const quantity = item.reservation ? 1 : item.quantity;
       const baseSubtotal = unitPrice * quantity;
-      const discountAmount = baseSubtotal * (discountPercent / 100);
-      const lineSubtotal = baseSubtotal - discountAmount;
-      const roundedSubtotal = Math.round(lineSubtotal * 100) / 100;
+      const discountsUsd: LineDiscount[] = (item.discounts ?? []).map((d) =>
+        d.type === "fixed"
+          ? { ...d, value: toUsd(d.value, currency, rateMap) }
+          : d,
+      );
+      const { discountAmount } = applyDiscounts(baseSubtotal, discountsUsd);
       const roundedDiscount = Math.round(discountAmount * 100) / 100;
+      const lineSubtotal = baseSubtotal - roundedDiscount;
+      const roundedSubtotal = Math.round(lineSubtotal * 100) / 100;
       const itemTaxRate = item.product.taxRate || 0;
-      const itemTax = Math.round(roundedSubtotal * itemTaxRate) / 100;
+      const itemTax = Math.round(roundedSubtotal * (itemTaxRate / 100) * 100) / 100;
       subtotal += roundedSubtotal;
       discountTotal += roundedDiscount;
       taxTotal += itemTax;
+      const discountPercentEquivalent = baseSubtotal > 0 ? (roundedDiscount / baseSubtotal) * 100 : 0;
       return {
         productId: item.product.id,
         quantity,
         unitPrice,
-        discountPercent,
+        discounts: discountsUsd,
+        discountPercent: Math.round(discountPercentEquivalent * 100) / 100,
+        discountAmount: roundedDiscount,
       };
     });
 
     subtotal = Math.round(subtotal * 100) / 100;
     discountTotal = Math.round(discountTotal * 100) / 100;
     taxTotal = Math.round(taxTotal * 100) / 100;
-    const total = Math.round((subtotal - discountTotal + taxTotal) * 100) / 100;
+    // `subtotal` already excludes discounts (it is the net line subtotal), so the
+    // total is net subtotal + tax, matching the worker's computed sale totals.
+    const total = Math.round((subtotal + taxTotal) * 100) / 100;
 
     const validPayments = payments.filter((p) => parseFloat(p.amount) > 0);
     const totalPaymentsUsd = validPayments.reduce(
@@ -196,8 +206,18 @@ export function usePayment({
         productId: item.product.id,
         checkIn: item.reservation!.checkIn,
         checkOut: item.reservation!.checkOut,
-        total: item.reservation!.total,
-      }));
+         total: item.reservation!.total,
+          guests: 1,
+          guestPrice: item.product.price,
+          guestName: item.reservation!.guestName,
+          guestEmail: item.reservation!.guestEmail,
+          guestPhone: item.reservation!.guestPhone,
+       }));
+    if (reservationData.some((reservation) => reservation.checkOut <= reservation.checkIn)) {
+      toast("El check-out debe ser posterior al check-in", "error");
+      setSubmitting(false);
+      return;
+    }
 
     const saleDoc: SaleDoc = {
       rxid: clientId,
@@ -226,7 +246,8 @@ export function usePayment({
                   100,
               ) / 100
             : 0,
-        currency: "USD",
+        currency: p.currency === "VES" ? "VES" : "USD",
+        amountOriginal: parseFloat(p.amount) || 0,
         reference: p.reference || null,
         paymentDate: p.paymentDate || null,
         phone: p.phone || null,
@@ -266,33 +287,6 @@ export function usePayment({
     } as any;
 
     await db.sales.insert(saleDoc);
-
-    for (const item of saleItems) {
-      const productDoc = await db.products
-        .findOne(String(item.productId))
-        .exec();
-      if (productDoc) {
-        if (productDoc.productType === "combo") {
-          if (!!productDoc.comboItems) {
-            for (let comboItemKey in productDoc.comboItems) {
-              const comboItem = productDoc.comboItems[comboItemKey];
-              const comboItemProduct = await db.products
-                .findOne(String(comboItem.componentProductId))
-                .exec();
-              if (!comboItemProduct) continue;
-              await comboItemProduct.incrementalPatch({
-              currentStock:
-                comboItemProduct.currentStock - comboItem.quantity * item.quantity,
-              });
-            }
-          }
-        } else {
-          await productDoc.incrementalPatch({
-            currentStock: productDoc.currentStock - item.quantity,
-          });
-        }
-      }
-    }
 
     setPayDialog(false);
     setReceiptSale(receiptSaleData);

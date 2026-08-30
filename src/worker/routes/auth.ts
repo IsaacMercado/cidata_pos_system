@@ -241,7 +241,7 @@ auth.post("/logout", (c) => {
 
 auth.post("/users", requireSuperuser, async (c) => {
   const db = c.get("db");
-  const { username, name, email, password, role, pin } = await c.req.json<{
+   const { username, name, email, password, role, pin } = await c.req.json<{
     username: string;
     name: string;
     email: string;
@@ -264,8 +264,7 @@ auth.post("/users", requireSuperuser, async (c) => {
         username,
         name,
         email,
-        pin: pin ?? "",
-        pinHash: pin ? await passwordHash(pin) : null,
+         pinHash: pin ? await passwordHash(pin) : null,
         passwordHash: await passwordHash(password),
         role: role || "cashier",
       })

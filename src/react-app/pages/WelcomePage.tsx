@@ -3,7 +3,6 @@ import {
   Receipt,
   Shield,
   ShoppingCart,
-  Users,
   UtensilsCrossed,
 } from "lucide-react";
 import { useLocation } from "wouter-preact";
@@ -25,14 +24,6 @@ const modules = [
     icon: Package,
     screen: "products",
     color: "bg-emerald-500",
-  },
-  {
-    href: "/customers",
-    label: "Clientes",
-    desc: "Administrar clientes",
-    icon: Users,
-    screen: "customers",
-    color: "bg-blue-500",
   },
   {
     href: "/sales",
