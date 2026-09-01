@@ -1,0 +1,10 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cloudflare_operation_pos_manager,cloudflare.operation.pos.manager,model_cloudflare_operation,point_of_sale.group_pos_manager,1,1,1,1
+access_cloudflare_payment_map_pos_manager,cloudflare.payment.map.pos.manager,model_cloudflare_payment_map,point_of_sale.group_pos_manager,1,1,1,1
+access_cloudflare_sync_pos_manager,cloudflare.sync.pos.manager,model_cloudflare_sync,point_of_sale.group_pos_manager,1,1,1,1
+access_cloudflare_restaurant_pos_manager,cloudflare.restaurant.pos.manager,model_cloudflare_restaurant,point_of_sale.group_pos_manager,1,1,1,1
+access_cloudflare_table_pos_manager,cloudflare.table.pos.manager,model_cloudflare_table,point_of_sale.group_pos_manager,1,1,1,1
+access_cloudflare_reservation_rate_pos_manager,cloudflare.reservation.rate.pos.manager,model_cloudflare_reservation_rate,point_of_sale.group_pos_manager,1,1,1,1
+access_cloudflare_reservation_pos_manager,cloudflare.reservation.pos.manager,model_cloudflare_reservation,point_of_sale.group_pos_manager,1,1,1,1
+access_cidata_payment_report,cidata.payment.report,model_cidata_payment_report,point_of_sale.group_pos_manager,1,0,0,0
+access_cidata_sale_category_report,cidata.sale.category.report,model_cidata_sale_category_report,point_of_sale.group_pos_manager,1,0,0,0

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_cloudflare_sync_form" model="ir.ui.view">
+        <field name="name">cloudflare.sync.form</field>
+        <field name="model">cloudflare.sync</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_sync_operations" type="object" class="oe_highlight" icon="fa-refresh"
+                                string="Sincronizar ahora"/>
+                        <button name="action_pull_catalog" type="object" icon="fa-cloud-download"
+                                string="Descargar catálogo"/>
+                        <button name="action_push_stock" type="object" icon="fa-database"
+                                string="Publicar stock al POS"/>
+                        <button name="action_publish_catalog" type="object" class="oe_highlight" icon="fa-upload"
+                                string="Publicar catálogo al POS"/>
+                        <button name="action_test_connection" type="object" icon="fa-plug"
+                                string="Probar conexión"/>
+                    </div>
+                    <div class="oe_title">
+                        <h1>Cloudflare POS Sync</h1>
+                    </div>
+                    <group>
+                        <group string="Estado">
+                            <field name="last_sync_text"/>
+                            <field name="stats_pending" string="Pendientes / reintentos"/>
+                            <field name="stats_done" string="Aceptadas"/>
+                            <field name="stats_error" string="Rechazadas (funcional)"/>
+                            <field name="stats_dead_letter" string="Dead letter"/>
+                        </group>
+                        <group string="Accesos rápidos">
+                            <div>
+                                <button name="%(cidata_pos_sync.action_cloudflare_operation)d" icon="fa-list" type="action" class="btn-link">
+                                    Ver operaciones
+                                </button>
+                            </div>
+                            <div>
+                                <button name="%(cidata_pos_sync.action_cloudflare_payment_map)d" icon="fa-credit-card" type="action" class="btn-link">
+                                    Mapear métodos de pago
+                                </button>
+                            </div>
+                            <div>
+                                <button name="%(cidata_pos_sync.action_cloudflare_restaurant)d" icon="fa-cutlery" type="action" class="btn-link">
+                                    Restaurantes y mesas
+                                </button>
+                            </div>
+                            <div>
+                                <button name="%(cidata_pos_sync.action_cloudflare_reservation)d" icon="fa-bed" type="action" class="btn-link">
+                                    Ver reservas
+                                </button>
+                            </div>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cloudflare_sync" model="ir.actions.act_window">
+        <field name="name">Panel Cloudflare Sync</field>
+        <field name="res_model">cloudflare.sync</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_cloudflare_sync_form"/>
+    </record>
+
+    <menuitem id="menu_cloudflare_sync_root"
+              name="Cloudflare Sync"
+              sequence="45"
+              groups="point_of_sale.group_pos_manager"/>
+
+    <menuitem id="menu_cloudflare_sync_dashboard"
+              name="Panel"
+              parent="menu_cloudflare_sync_root"
+              action="action_cloudflare_sync"
+              sequence="10"/>
+
+    <menuitem id="menu_cloudflare_sync_operations"
+              name="Operaciones"
+              parent="menu_cloudflare_sync_root"
+              action="action_cloudflare_operation"
+              sequence="20"/>
+
+    <menuitem id="menu_cloudflare_sync_payments"
+              name="Métodos de pago"
+              parent="menu_cloudflare_sync_root"
+              action="action_cloudflare_payment_map"
+              sequence="30"/>
+
+    <menuitem id="menu_cloudflare_sync_restaurants"
+              name="Restaurantes"
+              parent="menu_cloudflare_sync_root"
+              action="action_cloudflare_restaurant"
+              sequence="35"/>
+
+    <menuitem id="menu_cloudflare_sync_reservations"
+              name="Reservas"
+              parent="menu_cloudflare_sync_root"
+              action="action_cloudflare_reservation"
+              sequence="36"/>
+
+    <menuitem id="menu_cloudflare_sync_settings"
+              name="Ajustes"
+              parent="menu_cloudflare_sync_root"
+              action="base.res_config_setting_act_window"
+              sequence="40"/>
+</odoo>

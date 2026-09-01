@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_cidata_payment_report_tree" model="ir.ui.view">
+        <field name="name">cidata.payment.report.tree</field>
+        <field name="model">cidata.payment.report</field>
+        <field name="arch" type="xml">
+            <list create="false" edit="false" delete="false">
+                <field name="payment_date"/>
+                <field name="receipt_number"/>
+                <field name="payment_method_id"/>
+                <field name="amount" sum="Total contable"/>
+                <field name="currency"/>
+                <field name="amount_original" sum="Total original"/>
+                <field name="exchange_rate"/>
+                <field name="reference"/>
+                <field name="reference_status"/>
+                <field name="reconciliation_status"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_cidata_payment_report_search" model="ir.ui.view">
+        <field name="name">cidata.payment.report.search</field>
+        <field name="model">cidata.payment.report</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="receipt_number"/>
+                <field name="reference"/>
+                <field name="payment_method_id"/>
+                <filter name="ves" string="VES" domain="[('currency', '=', 'VES')]"/>
+                <filter name="unreconciled" string="No conciliados" domain="[('reconciled', '=', False)]"/>
+                <filter name="partial_reference" string="Referencia parcial" domain="[('reference_status', '=', 'partial')]"/>
+                <filter name="group_method" string="Agrupar por metodo" context="{'group_by': 'payment_method_id'}"/>
+                <filter name="group_reconciliation" string="Agrupar por conciliacion" context="{'group_by': 'reconciliation_status'}"/>
+                <filter name="group_currency" string="Agrupar por moneda" context="{'group_by': 'currency'}"/>
+            </search>
+        </field>
+    </record>
+    <record id="action_cidata_payment_report" model="ir.actions.act_window">
+        <field name="name">Pagos bancarios y referencias</field>
+        <field name="res_model">cidata.payment.report</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_cidata_payment_report_search"/>
+    </record>
+
+    <record id="view_cidata_sale_category_report_tree" model="ir.ui.view">
+        <field name="name">cidata.sale.category.report.tree</field>
+        <field name="model">cidata.sale.category.report</field>
+        <field name="arch" type="xml">
+            <list create="false" edit="false" delete="false">
+                <field name="date_order"/>
+                <field name="receipt_number"/>
+                <field name="category_name"/>
+                <field name="product_name"/>
+                <field name="quantity" sum="Total cantidad"/>
+                <field name="subtotal" sum="Subtotal"/>
+                <field name="total" sum="Total"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_cidata_sale_category_report_search" model="ir.ui.view">
+        <field name="name">cidata.sale.category.report.search</field>
+        <field name="model">cidata.sale.category.report</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="category_id"/>
+                <field name="product_id"/>
+                <filter name="group_category" string="Agrupar por categoria" context="{'group_by': 'category_id'}"/>
+                <filter name="group_product" string="Agrupar por producto" context="{'group_by': 'product_id'}"/>
+            </search>
+        </field>
+    </record>
+    <record id="action_cidata_sale_category_report" model="ir.actions.act_window">
+        <field name="name">Ventas por categoria</field>
+        <field name="res_model">cidata.sale.category.report</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_cidata_sale_category_report_search"/>
+    </record>
+
+    <menuitem id="menu_cidata_payment_report" name="Pagos y conciliacion"
+              parent="menu_cloudflare_sync_root" action="action_cidata_payment_report" sequence="25"/>
+    <menuitem id="menu_cidata_sale_category_report" name="Ventas por categoria"
+              parent="menu_cloudflare_sync_root" action="action_cidata_sale_category_report" sequence="26"/>
+</odoo>
