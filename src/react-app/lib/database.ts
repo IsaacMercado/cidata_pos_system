@@ -58,6 +58,14 @@ export interface ProductDoc {
   catalogStatus: string;
   minStock: number;
   currentStock: number;
+  externalId?: string | null;
+  templateExternalId?: string | null;
+  variantExternalId?: string | null;
+  attributeValues: Record<string, string>;
+  taxExternalId?: string | null;
+  catalogVersion: number;
+  stockProjection: number;
+  stockOfficial: number | null;
   isActive: number;
   rates: ProductRate[];
   reservationRates: ReservationRate[];
@@ -165,7 +173,7 @@ export interface OperatorDoc {
 
 const productSchema: RxJsonSchema<ProductDoc> = {
   title: "product",
-  version: 2,
+  version: 3,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -185,6 +193,14 @@ const productSchema: RxJsonSchema<ProductDoc> = {
     catalogStatus: { type: "string", default: "active" },
     minStock: { type: "number" },
     currentStock: { type: "number" },
+    externalId: { type: ["string", "null"] },
+    templateExternalId: { type: ["string", "null"] },
+    variantExternalId: { type: ["string", "null"] },
+    attributeValues: { type: "object", default: {} },
+    taxExternalId: { type: ["string", "null"] },
+    catalogVersion: { type: "number", default: 1 },
+    stockProjection: { type: "number", default: 0 },
+    stockOfficial: { type: ["number", "null"] },
     isActive: { type: "number", multipleOf: 1, minimum: 0, maximum: 1 },
     rates: {
       type: "array",
@@ -452,6 +468,17 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
         2: (doc: ProductDoc) => ({
           ...doc,
           reservationRates: doc.reservationRates ?? [],
+        }),
+        3: (doc: ProductDoc) => ({
+          ...doc,
+          externalId: doc.externalId ?? doc.code ?? null,
+          templateExternalId: doc.templateExternalId ?? null,
+          variantExternalId: doc.variantExternalId ?? null,
+          attributeValues: doc.attributeValues ?? {},
+          taxExternalId: doc.taxExternalId ?? null,
+          catalogVersion: doc.catalogVersion ?? 1,
+          stockProjection: doc.stockProjection ?? doc.currentStock ?? 0,
+          stockOfficial: doc.stockOfficial ?? null,
         }),
       },
     },
@@ -782,8 +809,14 @@ function startReplication(collection: RxCollection<any>, name: string) {
           });
           throw new ServerError(message);
         }
+        const documents = name === "products"
+          ? json.documents.map((document: any) => ({
+              ...document,
+              catalogVersion: Number(document.catalogVersion) || 1,
+            }))
+          : json.documents;
         return {
-          documents: json.documents,
+          documents,
           checkpoint: json.checkpoint ?? null,
         };
       },
