@@ -466,7 +466,8 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     sales: {
       schema: saleSchema,
       migrationStrategies: {
-        1: (doc: any) => ({
+        1: (doc: any) => doc,
+        2: (doc: any) => ({
           ...doc,
           items: (doc.items || []).map((item: any) =>
             item.discounts ? item : { ...item, discounts: [] },
