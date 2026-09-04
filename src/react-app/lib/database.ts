@@ -421,6 +421,7 @@ type DatabaseRuntime = { promise: Promise<RxDatabase<RxCollections>> | null };
 const databaseRuntime = ((globalThis as typeof globalThis & {
   __posDatabaseRuntime?: DatabaseRuntime;
 }).__posDatabaseRuntime ??= { promise: null });
+const activeReplications: { cancel: () => Promise<void> | void }[] = [];
 
 function makeStorage() {
   return wrappedValidateAjvStorage({ storage: getRxStorageDexie() });
@@ -740,7 +741,7 @@ async function readResponse(res: Response): Promise<{
 }
 
 function startReplication(collection: RxCollection<any>, name: string) {
-  return replicateRxCollection({
+  const replication = replicateRxCollection({
     collection,
     replicationIdentifier: "server",
     live: true,
@@ -791,10 +792,12 @@ function startReplication(collection: RxCollection<any>, name: string) {
       },
     },
   });
+  activeReplications.push(replication);
+  return replication;
 }
 
 function startPushReplication(collection: RxCollection<any>) {
-  return replicateRxCollection({
+  const replication = replicateRxCollection({
     collection,
     replicationIdentifier: "push-server",
     live: true,
@@ -820,6 +823,8 @@ function startPushReplication(collection: RxCollection<any>) {
       },
     },
   });
+  activeReplications.push(replication);
+  return replication;
 }
 
 export async function resetDatabase() {
@@ -832,6 +837,11 @@ export async function resetDatabase() {
   }
 
   try {
+    if (pendingRetryTimer !== null && typeof window !== "undefined") {
+      window.clearTimeout(pendingRetryTimer);
+      pendingRetryTimer = null;
+    }
+    await Promise.all(activeReplications.splice(0).map((replication) => replication.cancel()));
     await db?.close();
     databaseRuntime.promise = null;
     await removeRxDatabase(DB_NAME, getRxStorageDexie());
