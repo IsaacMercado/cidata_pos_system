@@ -87,13 +87,13 @@ export function PosToolbar({
             <button
               onClick={async () => {
                 if (!canResetDatabase) return;
-                if (!window.confirm("¿Está seguro de que desea borrar todos los datos locales? Descargue primero un respaldo. Las ventas pendientes de sincronización se perderán.")) return;
+                if (!window.confirm("¿Está seguro de que desea borrar todos los datos locales? Descargue primero un respaldo. La acción se bloqueará si existen ventas pendientes de sincronización.")) return;
                 try {
                   await downloadDatabaseBackup();
                   await resetDatabase();
                   location.reload();
                 } catch {
-                  window.alert("No se borró la base local porque no se pudo generar el respaldo.");
+                  window.alert("No se borró la base local. Verifique que no existan ventas pendientes y que se pueda generar el respaldo.");
                 }
               }}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"

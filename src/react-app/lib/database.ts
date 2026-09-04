@@ -311,7 +311,8 @@ const operatorSchema: RxJsonSchema<OperatorDoc> = {
 
 const saleSchema: RxJsonSchema<SaleDoc> = {
   title: "sale",
-  version: 1,
+  // Version 2 adds the original-currency payment audit fields.
+  version: 2,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -470,6 +471,12 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
           items: (doc.items || []).map((item: any) =>
             item.discounts ? item : { ...item, discounts: [] },
           ),
+          payments: (doc.payments || []).map((payment: any) => ({
+            ...payment,
+            amountOriginal: payment.amountOriginal ?? payment.amount ?? 0,
+            exchangeRate: payment.exchangeRate ?? (payment.currency === "USD" ? 1 : null),
+            amountUsd: payment.amountUsd ?? payment.amount ?? 0,
+          })),
         }),
       },
     },
@@ -815,13 +822,21 @@ function startPushReplication(collection: RxCollection<any>) {
 }
 
 export async function resetDatabase() {
+  const db = await databaseRuntime.promise?.catch(() => null);
+  const pendingSales = db
+    ? await db.sales.find({ selector: { syncStatus: "pending" }, limit: 1 }).exec()
+    : [];
+  if (pendingSales.length > 0) {
+    throw new Error("Hay ventas pendientes de sincronización");
+  }
+
   try {
-    const db = await databaseRuntime.promise?.catch(() => null);
     await db?.close();
     databaseRuntime.promise = null;
     await removeRxDatabase(DB_NAME, getRxStorageDexie());
   } catch (e) {
     console.warn("Error resetting database:", e);
+    throw e;
   }
 }
 
