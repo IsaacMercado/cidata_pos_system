@@ -7,15 +7,32 @@ class CloudflareRestaurant(models.Model):
     _rec_name = "name"
 
     _cf_id_unique = models.Constraint(
-        "unique(cf_id, company_id)", "ID Cloudflare duplicado."
+        "unique(cf_id, company_id)",
+        "ID Cloudflare duplicado.",
     )
 
-    cf_id = fields.Integer(string="ID Cloudflare", index=True, required=True)
-    name = fields.Char(string="Nombre", required=True)
-    is_active = fields.Boolean(string="Activo", default=True)
-    table_ids = fields.One2many("cloudflare.table", "restaurant_id", string="Mesas")
+    cf_id = fields.Integer(
+        string="ID Cloudflare",
+        index=True,
+        required=True,
+    )
+    name = fields.Char(
+        string="Nombre",
+        required=True,
+    )
+    is_active = fields.Boolean(
+        string="Activo",
+        default=True,
+    )
+    table_ids = fields.One2many(
+        "cloudflare.table",
+        "restaurant_id",
+        string="Mesas",
+    )
     company_id = fields.Many2one(
-        "res.company", string="Compañía", required=True,
+        "res.company",
+        string="Compañía",
+        required=True,
         default=lambda self: self.env.company,
     )
 
@@ -50,7 +67,10 @@ class CloudflareTable(models.Model):
 
     cf_id = fields.Integer(string="ID Cloudflare", index=True, required=True)
     restaurant_id = fields.Many2one(
-        "cloudflare.restaurant", string="Restaurante", required=True, ondelete="cascade",
+        "cloudflare.restaurant",
+        string="Restaurante",
+        required=True,
+        ondelete="cascade",
     )
     name = fields.Char(string="Nombre", required=True)
     capacity = fields.Integer(string="Capacidad", default=2)
@@ -66,7 +86,9 @@ class CloudflareTable(models.Model):
     )
     is_active = fields.Boolean(string="Activa", default=True)
     company_id = fields.Many2one(
-        "res.company", string="Compañía", required=True,
+        "res.company",
+        string="Compañía",
+        required=True,
         default=lambda self: self.env.company,
     )
 
@@ -108,12 +130,17 @@ class CloudflareReservationRate(models.Model):
     )
 
     product_id = fields.Many2one(
-        "product.product", string="Producto", required=True, ondelete="cascade",
+        "product.product",
+        string="Producto",
+        required=True,
+        ondelete="cascade",
     )
     guests = fields.Integer(string="Huéspedes", required=True, default=1)
     price = fields.Float(string="Precio", required=True, default=0)
     company_id = fields.Many2one(
-        "res.company", string="Compañía", required=True,
+        "res.company",
+        string="Compañía",
+        required=True,
         default=lambda self: self.env.company,
     )
 
@@ -139,11 +166,13 @@ class CloudflareReservationRate(models.Model):
             if existing:
                 existing.write(vals)
             else:
-                self.create({
-                    **vals,
-                    "product_id": product.id,
-                    "guests": guests,
-                })
+                self.create(
+                    {
+                        **vals,
+                        "product_id": product.id,
+                        "guests": guests,
+                    }
+                )
 
 
 class CloudflareReservation(models.Model):
@@ -152,15 +181,20 @@ class CloudflareReservation(models.Model):
     _rec_name = "product_id"
 
     _cf_id_unique = models.Constraint(
-        "unique(cf_id, company_id)", "ID Cloudflare duplicado."
+        "unique(cf_id, company_id)",
+        "ID Cloudflare duplicado.",
     )
 
     cf_id = fields.Char(string="ID Cloudflare", index=True, required=True)
     product_id = fields.Many2one(
-        "product.product", string="Producto (habitación)", required=True,
+        "product.product",
+        string="Producto (habitación)",
+        required=True,
     )
     pos_order_id = fields.Many2one(
-        "pos.order", string="Orden POS", readonly=True,
+        "pos.order",
+        string="Orden POS",
+        readonly=True,
     )
     guest_name = fields.Char(string="Nombre del huésped")
     check_in = fields.Date(string="Fecha de entrada", required=True)
@@ -181,7 +215,9 @@ class CloudflareReservation(models.Model):
         default="pending",
     )
     company_id = fields.Many2one(
-        "res.company", string="Compañía", required=True,
+        "res.company",
+        string="Compañía",
+        required=True,
         default=lambda self: self.env.company,
     )
 
@@ -197,10 +233,14 @@ class CloudflareReservation(models.Model):
     def sync_from_payload(self, reservation_data, order=None):
         """Crea o actualiza reserva desde payload del Worker."""
         for data in reservation_data:
-            cf_id = str(data.get("reservation_id") or data.get("id") or (
-                f"legacy_{data.get('client_id', '')}_{data.get('product_code', '')}_"
-                f"{data.get('check_in', '')}_{data.get('check_out', '')}"
-            ))
+            cf_id = str(
+                data.get("reservation_id")
+                or data.get("id")
+                or (
+                    f"legacy_{data.get('client_id', '')}_{data.get('product_code', '')}_"
+                    f"{data.get('check_in', '')}_{data.get('check_out', '')}"
+                )
+            )
             existing = self.search(
                 [("cf_id", "=", cf_id), ("company_id", "=", self.env.company.id)],
                 limit=1,

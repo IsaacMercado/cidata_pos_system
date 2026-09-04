@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 import requests
 from odoo.exceptions import UserError
@@ -51,12 +52,25 @@ class CloudflareSync(models.TransientModel):
         domain_base = [("company_id", "=", self.env.company.id)]
 
         for rec in self:
-            rec.stats_pending = Operation.search_count(domain_base + [("state", "in", ["pending", "processing", "error_retry"])])
-            rec.stats_done = Operation.search_count(domain_base + [("state", "=", "done")])
-            rec.stats_error = Operation.search_count(domain_base + [("state", "=", "rejected")])
-            rec.stats_dead_letter = Operation.search_count(domain_base + [("state", "=", "dead_letter")])
+            rec.stats_pending = Operation.search_count(
+                domain_base
+                + [("state", "in", ["pending", "processing", "error_retry"])]
+            )
+            rec.stats_done = Operation.search_count(
+                domain_base + [("state", "=", "done")]
+            )
+            rec.stats_error = Operation.search_count(
+                domain_base + [("state", "=", "rejected")]
+            )
+            rec.stats_dead_letter = Operation.search_count(
+                domain_base + [("state", "=", "dead_letter")]
+            )
 
-            param = self.env["ir.config_parameter"].sudo().get_param(f"{PARAM_PREFIX}.last_sync_at")
+            param = (
+                self.env["ir.config_parameter"]
+                .sudo()
+                .get_param(f"{PARAM_PREFIX}.last_sync_at")
+            )
             rec.last_sync_text = param or _("Nunca")
 
     # ──────────────────────────────────────────────────────────────────────
@@ -64,10 +78,17 @@ class CloudflareSync(models.TransientModel):
     # ──────────────────────────────────────────────────────────────────────
 
     def _get_param(self, key, required=True, default=None):
-        value = self.env["ir.config_parameter"].sudo().get_param(f"{PARAM_PREFIX}.{key}", default)
+        value = (
+            self.env["ir.config_parameter"]
+            .sudo()
+            .get_param(f"{PARAM_PREFIX}.{key}", default)
+        )
         if required and not value:
             raise UserError(
-                _("Falta configurar '%(key)s' en Ajustes > Cloudflare POS Sync.", key=key)
+                _(
+                    "Falta configurar '%(key)s' en Ajustes > Cloudflare POS Sync.",
+                    key=key,
+                )
             )
         return value
 
@@ -75,19 +96,30 @@ class CloudflareSync(models.TransientModel):
         url = self._get_param("worker_url").rstrip("/") + path
         token = self._get_param("integration_token")
         headers = {"Authorization": f"Bearer {token}"}
+
         try:
             response = requests.request(
-                method, url, headers=headers, timeout=HTTP_TIMEOUT, **kwargs
+                method,
+                url,
+                headers=headers,
+                timeout=HTTP_TIMEOUT,
+                **kwargs,
             )
         except requests.RequestException as exc:
             # Error técnico/red: reintento. Las operaciones quedan como están.
             raise UserError(_("Error de red contra el Worker: %s", exc)) from exc
+
         if response.status_code >= 400:
             detail = response.text[:500]
             raise UserError(
-                _("El Worker respondió %(code)s en %(path)s: %(detail)s",
-                  code=response.status_code, path=path, detail=detail)
+                _(
+                    "El Worker respondió %(code)s en %(path)s: %(detail)s",
+                    code=response.status_code,
+                    path=path,
+                    detail=detail,
+                )
             )
+
         return response.json() if response.content else {}
 
     # ──────────────────────────────────────────────────────────────────────
@@ -103,7 +135,7 @@ class CloudflareSync(models.TransientModel):
 
         Solo productos simples estocables; el stock de los combos es una
         proyección de sus componentes y no se publica.
-    """
+        """
 
         warehouse = self.env["stock.warehouse"].search(
             [("company_id", "=", self.env.company.id)], limit=1
@@ -111,15 +143,17 @@ class CloudflareSync(models.TransientModel):
         location = warehouse.lot_stock_id if warehouse else False
         if not location:
             raise UserError(_("No existe un almacén para la compañía actual."))
-        changes = []
+        stock = []
         products = self.env["product.product"].search(
             [("default_code", "!=", False), ("is_storable", "=", True)]
         )
         for product in products:
-            has_bom = self.env["mrp.bom"].search_count([
-                ("product_tmpl_id", "=", product.product_tmpl_id.id),
-                ("type", "=", "phantom"),
-            ])
+            has_bom = self.env["mrp.bom"].search_count(
+                [
+                    ("product_tmpl_id", "=", product.product_tmpl_id.id),
+                    ("type", "=", "phantom"),
+                ]
+            )
             if has_bom:
                 continue
             quants = self.env["stock.quant"].search(
@@ -129,22 +163,27 @@ class CloudflareSync(models.TransientModel):
                 ]
             )
             available = sum(quants.mapped("available_quantity"))
-            changes.append({
-                "change_id": f"cf_stock_{warehouse.id}_{product.default_code}",
-                "entity_type": "product",
-                "action": "upsert",
-                "external_ref": product.default_code,
-                "data": {"current_stock": available},
-            })
-        if not changes:
+            stock.append(
+                {
+                    "external_ref": product.default_code,
+                    "stock_official": available,
+                }
+            )
+        if not stock:
             return self._notify(_("Sin productos estocables que publicar."))
         # El contrato acepta lotes; se envían en bloques razonables.
-        for start in range(0, len(changes), 200):
+        for start in range(0, len(stock), 200):
             self._worker_request(
-                "POST", "/api/integration/catalog/publish",
-                json={"changes": changes[start:start + 200]},
+                "POST",
+                "/api/integration/stock/publish",
+                json={
+                    "observed_at": fields.Datetime.now(),
+                    "stock": stock[start : start + 200],
+                },
             )
-        return self._notify(_("Stock publicado al POS: %d productos.", len(changes)))
+        return self._notify(
+            _("Stock oficial publicado al POS: %d productos.", len(stock))
+        )
 
     def _catalog_product_change(self, product):
         """Build the administrative product representation sent to Cloudflare.
@@ -164,47 +203,100 @@ class CloudflareSync(models.TransientModel):
                 variant_values[attribute.name] = attribute_value.name
 
         tax = product.taxes_id.filtered(
-            lambda item: item.type_tax_use == "sale" and item.company_id == self.env.company
+            lambda item: (
+                item.type_tax_use == "sale" and item.company_id == self.env.company
+            )
         )[:1]
         return {
+            "external_id": product.default_code,
+            "template_external_id": f"odoo-template-{product.product_tmpl_id.id}",
+            "variant_external_id": f"odoo-variant-{product.id}",
             "name": product.display_name,
             "price": float(product.lst_price),
             "cost": float(product.standard_price),
             "barcode": product.barcode or None,
             "description": product.description_sale or None,
-            "tax_rate_percent": float(tax.amount) if tax and tax.amount_type == "percent" else 0,
+            "tax_rate_percent": float(tax.amount)
+            if tax and tax.amount_type == "percent"
+            else 0,
             "unit": product.uom_id.name or "unit",
             "product_type": "simple",
-            "catalog_status": "active" if product.sale_ok and product.available_in_pos else "inactive",
+            "catalog_status": "active"
+            if product.sale_ok and product.available_in_pos
+            else "inactive",
             "is_active": bool(product.sale_ok and product.available_in_pos),
             "variant_attributes": variant_attributes,
             "variant_values": variant_values,
         }
 
     def action_publish_catalog(self):
-        """Publish Odoo POS products and their variants to Cloudflare."""
-        products = self.env["product.product"].search([
-            ("default_code", "!=", False),
-            ("available_in_pos", "=", True),
-        ])
-        changes = [
-            {
-                "change_id": f"cf_catalog_{self.env.company.id}_{product.default_code}",
-                "entity_type": "product",
-                "action": "upsert" if product.sale_ok else "deactivate",
-                "external_ref": product.default_code,
-                "data": self._catalog_product_change(product),
-            }
-            for product in products
-        ]
-        if not changes:
-            return self._notify(_("No hay productos POS con SKU para publicar."), warning=True)
-        for start in range(0, len(changes), 25):
-            self._worker_request(
-                "POST", "/api/integration/catalog/publish",
-                json={"changes": changes[start:start + 25]},
+        """Publish one complete, immutable Odoo catalog version to Cloudflare."""
+        products = self.env["product.product"].search(
+            [
+                ("default_code", "!=", False),
+            ]
+        )
+        if not products:
+            return self._notify(
+                _("No hay productos con SKU para publicar."), warning=True
             )
-        return self._notify(_("Catálogo publicado al POS: %d productos/variantes.", len(changes)))
+        published_at = fields.Datetime.now()
+        version = "odoo-%s-%s" % (
+            published_at.strftime("%Y%m%d-%H%M%S"),
+            uuid.uuid4().hex[:8],
+        )
+        categories = self.env["product.category"].search([])
+        payload = {
+            "catalog_version": version,
+            "company_external_id": f"odoo-company-{self.env.company.id}",
+            "currency": self.env.company.currency_id.name or "USD",
+            "published_at": fields.Datetime.to_string(published_at).replace(" ", "T")
+            + "Z",
+            "categories": [
+                {
+                    "external_id": f"odoo-category-{category.id}",
+                    "cloudflare_id": category.id,
+                    "name": category.name,
+                    "parent_cloudflare_id": category.parent_id.id or None,
+                    "is_active": True,
+                }
+                for category in categories
+            ],
+            "products": [
+                {
+                    **self._catalog_product_change(product),
+                    "sku": product.default_code,
+                    "template_name": product.product_tmpl_id.name,
+                    "category_external_id": f"odoo-category-{product.categ_id.id}"
+                    if product.categ_id
+                    else None,
+                    "attribute_values": {
+                        value.attribute_id.name: value.product_attribute_value_id.name
+                        for value in (
+                            getattr(
+                                product, "product_template_attribute_value_ids", False
+                            )
+                            or []
+                        )
+                        if value.attribute_id and value.product_attribute_value_id
+                    },
+                    "product_type": "reservation"
+                    if getattr(product.product_tmpl_id, "is_room", False)
+                    else "simple",
+                    "min_stock": 0,
+                }
+                for product in products
+            ],
+            "payment_methods": [],
+            "restaurants": [],
+            "reservation_rates": [],
+        }
+        self._worker_request(
+            "POST", "/api/integration/catalog/publications", json=payload
+        )
+        return self._notify(
+            _("Catálogo publicado: %d productos/variantes.", len(products))
+        )
 
     def action_pull_catalog(self):
         data = self._worker_request("GET", "/api/integration/catalog/changes")
@@ -215,8 +307,12 @@ class CloudflareSync(models.TransientModel):
                 created_categories += 1
         # Primero productos simples para que existan los componentes,
         # después combos que los referencian.
-        simple = [p for p in data.get("products", []) if p.get("product_type") != "combo"]
-        combos = [p for p in data.get("products", []) if p.get("product_type") == "combo"]
+        simple = [
+            p for p in data.get("products", []) if p.get("product_type") != "combo"
+        ]
+        combos = [
+            p for p in data.get("products", []) if p.get("product_type") == "combo"
+        ]
         for product in simple + combos:
             created, updated = self._upsert_product(product)
             created_products += int(created)
@@ -235,7 +331,9 @@ class CloudflareSync(models.TransientModel):
         self._sync_reservation_rates(data.get("reservation_rates", []))
         message = _(
             "Catálogo: %(cats)d categorías nuevas, %(new)d productos creados, %(upd)d actualizados.",
-            cats=created_categories, new=created_products, upd=updated_products,
+            cats=created_categories,
+            new=created_products,
+            upd=updated_products,
         )
         if combo_failures:
             message += "\n" + _("Combos con error: %s", "; ".join(combo_failures))
@@ -260,48 +358,66 @@ class CloudflareSync(models.TransientModel):
                     for key, value in (refs or {}).items()
                     if not key.startswith("_") and value is not None
                 }
-                acks.append({
-                    "operation_id": operation["operation_id"],
-                    "lease_token": operation["lease_token"],
-                    "odoo_refs": public_refs,
-                })
-                mirror.write({
-                    "state": "done",
-                    "processed_at": fields.Datetime.now(),
-                    "last_error": False,
-                    "pos_order_id": refs.get("_pos_order_id"),
-                })
+                acks.append(
+                    {
+                        "operation_id": operation["operation_id"],
+                        "lease_token": operation["lease_token"],
+                        "odoo_refs": public_refs,
+                    }
+                )
+                mirror.write(
+                    {
+                        "state": "done",
+                        "processed_at": fields.Datetime.now(),
+                        "last_error": False,
+                        "pos_order_id": refs.get("_pos_order_id"),
+                    }
+                )
             except (CloudflareFunctionalError, CloudflarePermanentError) as exc:
                 classification = (
                     "permanent"
                     if isinstance(exc, CloudflarePermanentError)
                     else "functional"
                 )
-                fails.append({
-                    "operation_id": operation["operation_id"],
-                    "lease_token": operation["lease_token"],
-                    "error": str(exc),
-                    "classification": classification,
-                })
-                mirror.write({
-                    "state": "dead_letter" if classification == "permanent" else "rejected",
-                    "last_error": str(exc),
-                    "processed_at": fields.Datetime.now(),
-                })
+                fails.append(
+                    {
+                        "operation_id": operation["operation_id"],
+                        "lease_token": operation["lease_token"],
+                        "error": str(exc),
+                        "classification": classification,
+                    }
+                )
+                mirror.write(
+                    {
+                        "state": "dead_letter"
+                        if classification == "permanent"
+                        else "rejected",
+                        "last_error": str(exc),
+                        "processed_at": fields.Datetime.now(),
+                    }
+                )
             except Exception as exc:  # error no clasificado: reintento
-                _logger.exception("Error procesando operación %s", operation["operation_id"])
+                _logger.exception(
+                    "Error procesando operación %s", operation["operation_id"]
+                )
                 message = str(exc)[:2000]
-                fails.append({
-                    "operation_id": operation["operation_id"],
-                    "error": message,
-                    "classification": "retryable",
-                })
+                fails.append(
+                    {
+                        "operation_id": operation["operation_id"],
+                        "error": message,
+                        "classification": "retryable",
+                    }
+                )
                 mirror.write({"state": "error_retry", "last_error": message})
 
         if acks:
-            self._worker_request("POST", "/api/integration/operations/ack", json={"results": acks})
+            self._worker_request(
+                "POST", "/api/integration/operations/ack", json={"results": acks}
+            )
         if fails:
-            self._worker_request("POST", "/api/integration/operations/fail", json={"results": fails})
+            self._worker_request(
+                "POST", "/api/integration/operations/fail", json={"results": fails}
+            )
 
         self.env["ir.config_parameter"].sudo().set_param(
             f"{PARAM_PREFIX}.last_sync_at", fields.Datetime.now()
@@ -310,7 +426,11 @@ class CloudflareSync(models.TransientModel):
         if not operations:
             return self._notify(_("Sin operaciones pendientes."))
         return self._notify(
-            _("Sincronizadas: %(ok)d aceptadas, %(fail)d con error.", ok=len(acks), fail=len(fails))
+            _(
+                "Sincronizadas: %(ok)d aceptadas, %(fail)d con error.",
+                ok=len(acks),
+                fail=len(fails),
+            )
         )
 
     def cron_sync(self):
@@ -318,6 +438,7 @@ class CloudflareSync(models.TransientModel):
         for company in self.env["res.company"].search([]):
             sync = self.with_company(company)
             try:
+                sync.action_publish_catalog()
                 sync.action_sync_operations()
             except UserError as exc:
                 _logger.warning("Cron Cloudflare Sync (%s): %s", company.name, exc)
@@ -342,7 +463,9 @@ class CloudflareSync(models.TransientModel):
         if entity_type == "sale_cancel":
             self._process_cancel(payload)
             return {"_pos_order_id": None}
-        raise CloudflareFunctionalError(_("Tipo de entidad desconocido: %s", entity_type))
+        raise CloudflareFunctionalError(
+            _("Tipo de entidad desconocido: %s", entity_type)
+        )
 
     def _process_cancel(self, payload):
         """Fase 8 (adelantada): cancelación como reembolso POS nativo.
@@ -372,8 +495,11 @@ class CloudflareSync(models.TransientModel):
 
         if order.state not in ("paid", "done"):
             raise CloudflareFunctionalError(
-                _("Cancelación: la venta %s no está pagada en Odoo (estado %s).",
-                  identity, order.state)
+                _(
+                    "Cancelación: la venta %s no está pagada en Odoo (estado %s).",
+                    identity,
+                    order.state,
+                )
             )
 
         config = order.session_id.config_id
@@ -383,7 +509,13 @@ class CloudflareSync(models.TransientModel):
             refund_order = order._refund()
 
         total = refund_order.amount_total
-        if not refund_order.lines or float_compare(total, 0.0, precision_rounding=refund_order.currency_id.rounding) >= 0:
+        if (
+            not refund_order.lines
+            or float_compare(
+                total, 0.0, precision_rounding=refund_order.currency_id.rounding
+            )
+            >= 0
+        ):
             raise CloudflareFunctionalError(
                 _("Cancelación de %s: no se generaron líneas de reembolso.", order.name)
             )
@@ -393,32 +525,42 @@ class CloudflareSync(models.TransientModel):
         original_payments = order.payment_ids.filtered(lambda payment: payment.amount)
         if not original_payments:
             payment_method = self._resolve_default_refund_method(config)
-        if not payment_method:
-            if not original_payments:
-                raise CloudflareFunctionalError(
-                    _("Cancelación de %s: sin método de pago para devolver.", order.name)
+        if not payment_method and not original_payments:
+            raise CloudflareFunctionalError(
+                _(
+                    "Cancelación de %s: sin método de pago para devolver.",
+                    order.name,
                 )
+            )
         if original_payments:
             original_total = sum(original_payments.mapped("amount"))
             allocated = 0.0
             for index, original_payment in enumerate(original_payments):
-                amount = total - allocated if index == len(original_payments) - 1 else (
-                    total * original_payment.amount / original_total
+                amount = (
+                    total - allocated
+                    if index == len(original_payments) - 1
+                    else (total * original_payment.amount / original_total)
                 )
                 allocated += amount
-                refund_order.add_payment({
-                    "pos_order_id": refund_order.id,
-                    "payment_method_id": original_payment.payment_method_id.id,
-                    "amount": amount,
-                    "payment_date": payload.get("cancelled_at") or fields.Datetime.now(),
-                })
+                refund_order.add_payment(
+                    {
+                        "pos_order_id": refund_order.id,
+                        "payment_method_id": original_payment.payment_method_id.id,
+                        "amount": amount,
+                        "payment_date": payload.get("cancelled_at")
+                        or fields.Datetime.now(),
+                    }
+                )
         else:
-            refund_order.add_payment({
-                "pos_order_id": refund_order.id,
-                "payment_method_id": payment_method.id,
-                "amount": total,
-                "payment_date": payload.get("cancelled_at") or fields.Datetime.now(),
-            })
+            refund_order.add_payment(
+                {
+                    "pos_order_id": refund_order.id,
+                    "payment_method_id": payment_method.id,
+                    "amount": total,
+                    "payment_date": payload.get("cancelled_at")
+                    or fields.Datetime.now(),
+                }
+            )
         refund_order.write({"uuid": refund_uuid})
         try:
             refund_order.action_pos_order_paid()
@@ -461,45 +603,64 @@ class CloudflareSync(models.TransientModel):
         line_commands = []
         for index, item in enumerate(payload.get("items") or []):
             product = self._resolve_product(item.get("code"))
+            snapshot_rate = item.get("tax_rate")
             taxes = product.taxes_id.filtered(
-                lambda t: t.company_id == config.company_id and t.amount_type != "fixed"
+                lambda t: (
+                    t.company_id == config.company_id
+                    and t.amount_type != "fixed"
+                    and (
+                        snapshot_rate is None
+                        or float_compare(
+                            t.amount, float(snapshot_rate), precision_digits=4
+                        )
+                        == 0
+                    )
+                )
             )
+            if snapshot_rate is not None and not taxes and float(snapshot_rate) == 0:
+                taxes = product.taxes_id.browse()
             line_commands.append(
-                Command.create({
-                    "product_id": product.id,
-                    "qty": float(item.get("quantity") or 1),
-                    "price_unit": float(item.get("unit_price") or 0),
-                    "discount": float(item.get("discount_percent") or 0),
-                    "tax_ids": [Command.set(taxes.ids)],
-                    "uuid": f"{identity}-{index}",
-                    # Montos iniciales: se recalculan con _compute_amount_line_all().
-                    "price_subtotal": 0.0,
-                    "price_subtotal_incl": 0.0,
-                })
+                Command.create(
+                    {
+                        "product_id": product.id,
+                        "qty": float(item.get("quantity") or 1),
+                        "price_unit": float(item.get("unit_price") or 0),
+                        "discount": float(item.get("discount_percent") or 0),
+                        "tax_ids": [Command.set(taxes.ids)],
+                        "uuid": f"{identity}-{index}",
+                        # Montos iniciales: se recalculan con _compute_amount_line_all().
+                        "price_subtotal": 0.0,
+                        "price_subtotal_incl": 0.0,
+                    }
+                )
             )
         if not line_commands:
             raise CloudflareFunctionalError(_("Venta sin líneas: %s", identity))
 
         date_order = sale.get("created_at") or fields.Datetime.now()
-        order = self.env["pos.order"].create({
-            "session_id": session.id,
-            "partner_id": partner.id,
-            "uuid": identity,
-            "date_order": date_order,
-            "lines": line_commands,
-            "to_invoice": False,
-            # Los montos reales los calcula Odoo en _compute_prices().
-            "amount_paid": 0.0,
-            "amount_return": 0.0,
-            "amount_tax": 0.0,
-            "amount_total": 0.0,
-        })
+        order = self.env["pos.order"].create(
+            {
+                "session_id": session.id,
+                "partner_id": partner.id,
+                "uuid": identity,
+                "date_order": date_order,
+                "lines": line_commands,
+                "to_invoice": False,
+                # Los montos reales los calcula Odoo en _compute_prices().
+                "amount_paid": 0.0,
+                "amount_return": 0.0,
+                "amount_tax": 0.0,
+                "amount_total": 0.0,
+            }
+        )
 
         for line in order.lines:
             line.write(line._compute_amount_line_all())
 
         for payment in payments:
-            payment_method = self._resolve_payment_method(payment.get("method_code"), config)
+            payment_method = self._resolve_payment_method(
+                payment.get("method_code"), config
+            )
             amount = payment.get("amount_usd") or payment.get("amount") or 0
             vals = {
                 "pos_order_id": order.id,
@@ -508,7 +669,10 @@ class CloudflareSync(models.TransientModel):
                 # Fase 6: datos originales del pago, inmutables.
                 "cf_currency": payment.get("currency") or "USD",
                 "cf_amount_original": float(payment.get("amount_original") or amount),
-                "cf_exchange_rate": float(payment.get("exchange_rate") or 0),
+                "cf_exchange_rate": float(
+                    payment.get("exchange_rate")
+                    or (1 if payment.get("currency") == "USD" else 0)
+                ),
                 "cf_phone": payment.get("phone") or False,
             }
             if payment.get("reference"):
@@ -525,8 +689,12 @@ class CloudflareSync(models.TransientModel):
             rounding = order.currency_id.rounding or 0.01
             if round(difference, 4) > rounding / 2:
                 raise CloudflareFunctionalError(
-                    _("Diferencia de totales en venta %(identity)s: POS %(remote)s vs Odoo %(local)s",
-                      identity=identity, remote=remote_total, local=order.amount_total)
+                    _(
+                        "Diferencia de totales en venta %(identity)s: POS %(remote)s vs Odoo %(local)s",
+                        identity=identity,
+                        remote=remote_total,
+                        local=order.amount_total,
+                    )
                 )
 
         try:
@@ -539,19 +707,26 @@ class CloudflareSync(models.TransientModel):
             self._create_reservations_from_payload(payload, order)
         except UserError as exc:
             raise CloudflareFunctionalError(
-                _("Venta %(identity)s rechazada por Odoo: %(exc)s", identity=identity, exc=exc)
+                _(
+                    "Venta %(identity)s rechazada por Odoo: %(exc)s",
+                    identity=identity,
+                    exc=exc,
+                )
             ) from exc
 
-        note = (
-            _("POS Cloudflare · recibo %(receipt)s · tasa USD/VES %(rate)s · pagos originales: %(orig)s",
-              receipt=sale.get("receipt_number") or "",
-              rate=", ".join(
-                  str(p.get("exchange_rate")) for p in payload.get("payments") or [] if p.get("exchange_rate")
-              ) or "-",
-              orig=", ".join(
-                  "%s %s" % (p.get("amount_original"), p.get("currency"))
-                  for p in payload.get("payments") or []
-              ))
+        note = _(
+            "POS Cloudflare · recibo %(receipt)s · tasa USD/VES %(rate)s · pagos originales: %(orig)s",
+            receipt=sale.get("receipt_number") or "",
+            rate=", ".join(
+                str(p.get("exchange_rate"))
+                for p in payload.get("payments") or []
+                if p.get("exchange_rate")
+            )
+            or "-",
+            orig=", ".join(
+                "%s %s" % (p.get("amount_original"), p.get("currency"))
+                for p in payload.get("payments") or []
+            ),
         )
         order.message_post(body=note)
         return order
@@ -583,11 +758,15 @@ class CloudflareSync(models.TransientModel):
         )
         if session:
             return session
-        auto_open = (self._get_param("auto_open_session", required=False, default="True") or "").lower() in ("true", "1")
+        auto_open = (
+            self._get_param("auto_open_session", required=False, default="True") or ""
+        ).lower() in ("true", "1")
         if not auto_open:
             raise CloudflareFunctionalError(
-                _("No hay sesión abierta para %(config)s y la apertura automática está desactivada.",
-                  config=config.name)
+                _(
+                    "No hay sesión abierta para %(config)s y la apertura automática está desactivada.",
+                    config=config.name,
+                )
             )
         # Reutiliza una sesión en control de apertura pendiente antes de crear otra.
         pending = Session.search(
@@ -598,10 +777,12 @@ class CloudflareSync(models.TransientModel):
             limit=1,
         )
         if not pending:
-            pending = Session.create({
-                "config_id": config.id,
-                "user_id": self.env.user.id,
-            })
+            pending = Session.create(
+                {
+                    "config_id": config.id,
+                    "user_id": self.env.user.id,
+                }
+            )
         pending.set_opening_control(0, False)
         return pending
 
@@ -610,11 +791,13 @@ class CloudflareSync(models.TransientModel):
         partner = Partner.search([("ref", "=", ANON_PARTNER_REF)], limit=1)
         if partner:
             return partner
-        return Partner.create({
-            "name": _("Visitante ocasional"),
-            "ref": ANON_PARTNER_REF,
-            "company_type": "person",
-        })
+        return Partner.create(
+            {
+                "name": _("Visitante ocasional"),
+                "ref": ANON_PARTNER_REF,
+                "company_type": "person",
+            }
+        )
 
     def _resolve_product(self, code):
         Product = self.env["product.product"]
@@ -624,7 +807,9 @@ class CloudflareSync(models.TransientModel):
         if not product:
             product = Product.search([("barcode", "=", code)], limit=1)
         if not product:
-            raise CloudflareFunctionalError(_("Producto no encontrado en Odoo: %s", code))
+            raise CloudflareFunctionalError(
+                _("Producto no encontrado en Odoo: %s", code)
+            )
         return product
 
     def _resolve_payment_method(self, cloudflare_code, config=None):
@@ -663,31 +848,45 @@ class CloudflareSync(models.TransientModel):
                     limit=1,
                 )
                 if not journal:
-                    journal = Journal.create({
-                        "name": payment_method.name or _("POS Cloudflare"),
-                        "code": f"P{payment_method.id}"[:5],
-                        "type": "bank",
-                        "company_id": config.company_id.id,
-                    })
+                    journal = Journal.create(
+                        {
+                            "name": payment_method.name or _("POS Cloudflare"),
+                            "code": f"P{payment_method.id}"[:5],
+                            "type": "bank",
+                            "company_id": config.company_id.id,
+                        }
+                    )
                 payment_method.journal_id = journal.id
             if payment_method not in config.payment_method_ids:
                 config.write({"payment_method_ids": [Command.link(payment_method.id)]})
         except UserError as exc:
             raise CloudflareFunctionalError(
-                _("Habilita manualmente el método de pago '%(name)s' en el POS %(config)s "
-                  "(o cierra la sesión abierta) y reintenta: %(exc)s",
-                  name=payment_method.name, config=config.name, exc=exc)
+                _(
+                    "Habilita manualmente el método de pago '%(name)s' en el POS %(config)s "
+                    "(o cierra la sesión abierta) y reintenta: %(exc)s",
+                    name=payment_method.name,
+                    config=config.name,
+                    exc=exc,
+                )
             ) from exc
 
     def _map_category(self, cloudflare_id):
-        data = self.env["ir.model.data"].sudo().search(
-            [
-                ("module", "=", PARAM_PREFIX),
-                ("name", "=", f"cf_category_{cloudflare_id}"),
-            ],
-            limit=1,
+        data = (
+            self.env["ir.model.data"]
+            .sudo()
+            .search(
+                [
+                    ("module", "=", PARAM_PREFIX),
+                    ("name", "=", f"cf_category_{cloudflare_id}"),
+                ],
+                limit=1,
+            )
         )
-        return self.env["product.category"].browse(data.res_id) if data else self.env["product.category"]
+        return (
+            self.env["product.category"].browse(data.res_id)
+            if data
+            else self.env["product.category"]
+        )
 
     def _upsert_category(self, category):
         Category = self.env["product.category"]
@@ -703,13 +902,15 @@ class CloudflareSync(models.TransientModel):
             existing.write(vals)
             return False
         new_category = Category.create(vals)
-        self.env["ir.model.data"].sudo().create({
-            "module": PARAM_PREFIX,
-            "name": f"cf_category_{cf_id}",
-            "model": "product.category",
-            "res_id": new_category.id,
-            "noupdate": True,
-        })
+        self.env["ir.model.data"].sudo().create(
+            {
+                "module": PARAM_PREFIX,
+                "name": f"cf_category_{cf_id}",
+                "model": "product.category",
+                "res_id": new_category.id,
+                "noupdate": True,
+            }
+        )
         return True
 
     def _sync_combo_bom(self, product, product_data):
@@ -742,10 +943,14 @@ class CloudflareSync(models.TransientModel):
                 raise CloudflareFunctionalError(
                     _("Componente de combo no encontrado en Odoo: %s", component_code)
                 )
-            line_commands.append(Command.create({
-                "product_id": component.id,
-                "product_qty": float(item.get("quantity") or 1),
-            }))
+            line_commands.append(
+                Command.create(
+                    {
+                        "product_id": component.id,
+                        "product_qty": float(item.get("quantity") or 1),
+                    }
+                )
+            )
         vals = {"type": "phantom", "bom_line_ids": line_commands}
         if bom:
             bom.write(vals)
@@ -790,7 +995,9 @@ class CloudflareSync(models.TransientModel):
         if tax_rate == 0:
             vals["taxes_id"] = [Command.clear()]
         else:
-            matching = company_taxes.filtered(lambda t: float_compare(t.amount, tax_rate, precision_digits=4) == 0)
+            matching = company_taxes.filtered(
+                lambda t: float_compare(t.amount, tax_rate, precision_digits=4) == 0
+            )
             if matching:
                 vals["taxes_id"] = [Command.set(matching.ids)]
 
@@ -808,16 +1015,19 @@ class CloudflareSync(models.TransientModel):
                 [("cloudflare_code", "=", method.get("code"))], limit=1
             )
             if not exists:
-                PaymentMap.create({
-                    "cloudflare_code": method.get("code"),
-                    "cloudflare_name": method.get("name"),
-                })
+                PaymentMap.create(
+                    {
+                        "cloudflare_code": method.get("code"),
+                        "cloudflare_name": method.get("name"),
+                    }
+                )
 
     def _sync_restaurants(self, restaurant_data, table_data):
         Restaurant = self.env["cloudflare.restaurant"]
         Restaurant.sync_from_worker(restaurant_data)
         restaurant_map = {
-            r.cf_id: r for r in Restaurant.search([("company_id", "=", self.env.company.id)])
+            r.cf_id: r
+            for r in Restaurant.search([("company_id", "=", self.env.company.id)])
         }
         self.env["cloudflare.table"].sync_from_worker(table_data, restaurant_map)
 
@@ -831,7 +1041,9 @@ class CloudflareSync(models.TransientModel):
     def _create_reservations_from_payload(self, payload, order):
         reservations_data = payload.get("reservations") or []
         if reservations_data:
-            self.env["cloudflare.reservation"].sync_from_payload(reservations_data, order)
+            self.env["cloudflare.reservation"].sync_from_payload(
+                reservations_data, order
+            )
 
     def _notify(self, message, warning=False):
         return {

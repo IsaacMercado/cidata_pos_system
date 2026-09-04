@@ -11,23 +11,44 @@ class CidataPaymentReport(models.Model):
     id = fields.Id(readonly=True)
     payment_date = fields.Datetime(string="Fecha", readonly=True)
     receipt_number = fields.Char(string="Recibo", readonly=True)
-    order_id = fields.Many2one("pos.order", string="Orden", readonly=True)
-    payment_method_id = fields.Many2one("pos.payment.method", string="Método", readonly=True)
-    journal_id = fields.Many2one("account.journal", string="Diario", readonly=True)
+    order_id = fields.Many2one(
+        "pos.order",
+        string="Orden",
+        readonly=True,
+    )
+    payment_method_id = fields.Many2one(
+        "pos.payment.method",
+        string="Método",
+        readonly=True,
+    )
+    journal_id = fields.Many2one(
+        "account.journal",
+        string="Diario",
+        readonly=True,
+    )
     amount = fields.Float(string="Monto contable", readonly=True)
     currency = fields.Char(string="Moneda original", readonly=True)
     amount_original = fields.Float(string="Monto original", readonly=True)
     exchange_rate = fields.Float(string="Tasa USD/VES", readonly=True)
     reference = fields.Char(string="Referencia registrada", readonly=True)
     reference_status = fields.Selection(
-        [("none", "Sin referencia"), ("partial", "Referencia parcial"), ("provided", "Referencia registrada")],
-        string="Estado referencia", readonly=True,
+        [
+            ("none", "Sin referencia"),
+            ("partial", "Referencia parcial"),
+            ("provided", "Referencia registrada"),
+        ],
+        string="Estado referencia",
+        readonly=True,
     )
     phone = fields.Char(string="Teléfono", readonly=True)
     reconciled = fields.Boolean(string="Conciliado", readonly=True)
     reconciliation_status = fields.Selection(
-        [("reconciled", "Conciliado"), ("unreconciled", "No conciliado")],
-        string="Estado conciliación", readonly=True,
+        [
+            ("reconciled", "Conciliado"),
+            ("unreconciled", "No conciliado"),
+        ],
+        string="Estado conciliación",
+        readonly=True,
     )
     company_id = fields.Many2one("res.company", readonly=True)
 

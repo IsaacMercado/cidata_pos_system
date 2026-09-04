@@ -18,7 +18,7 @@ Ver docs/PLAN_INTEGRACION_ODOO.md para el contrato completo.
     "category": "Sales/Point of Sale",
     "version": "19.0.2.0.0",
     "license": "LGPL-3",
-    "depends": ["account", "point_of_sale", "stock", "mrp"],
+    "depends": ["account", "point_of_sale", "stock", "mrp", "hotel_management_odoo"],
     "data": [
         "security/ir.model.access.csv",
         "data/ir_cron.xml",

@@ -4,16 +4,18 @@
         <field name="name">cloudflare.operation.list</field>
         <field name="model">cloudflare.operation</field>
         <field name="arch" type="xml">
-            <list decoration-muted="state == 'done'" decoration-danger="state in ['rejected', 'dead_letter']" decoration-warning="state == 'error_retry'">
-                <field name="operation_id"/>
-                <field name="entity_type"/>
-                <field name="entity_id"/>
-                <field name="attempts"/>
-                <field name="state"/>
-                <field name="last_error" optional="show"/>
-                <field name="processed_at" optional="show"/>
-                <field name="pos_order_id" optional="show"/>
-                <field name="company_id" groups="base.group_multi_company"/>
+            <list decoration-muted="state == 'done'"
+                decoration-danger="state in ['rejected', 'dead_letter']"
+                decoration-warning="state == 'error_retry'">
+                <field name="operation_id" />
+                <field name="entity_type" />
+                <field name="entity_id" />
+                <field name="attempts" />
+                <field name="state" />
+                <field name="last_error" optional="show" />
+                <field name="processed_at" optional="show" />
+                <field name="pos_order_id" optional="show" />
+                <field name="company_id" groups="base.group_multi_company" />
             </list>
         </field>
     </record>
@@ -24,29 +26,29 @@
         <field name="arch" type="xml">
             <form>
                 <header>
-                    <field name="state" widget="statusbar" statusbar_visible="pending,done"/>
+                    <field name="state" widget="statusbar" statusbar_visible="pending,done" />
                 </header>
                 <sheet>
                     <group>
                         <group>
-                            <field name="operation_id"/>
-                            <field name="installation_id"/>
-                            <field name="entity_type"/>
-                            <field name="entity_id"/>
-                            <field name="attempts"/>
+                            <field name="operation_id" />
+                            <field name="installation_id" />
+                            <field name="entity_type" />
+                            <field name="entity_id" />
+                            <field name="attempts" />
                         </group>
                         <group>
-                            <field name="company_id" groups="base.group_multi_company"/>
-                            <field name="pos_order_id"/>
-                            <field name="processed_at"/>
+                            <field name="company_id" groups="base.group_multi_company" />
+                            <field name="pos_order_id" />
+                            <field name="processed_at" />
                         </group>
                     </group>
                     <notebook>
                         <page string="Payload original">
-                            <field name="payload" readonly="1"/>
+                            <field name="payload" readonly="1" />
                         </page>
                         <page string="Error">
-                            <field name="last_error" readonly="1"/>
+                            <field name="last_error" readonly="1" />
                         </page>
                     </notebook>
                 </sheet>
@@ -59,15 +61,20 @@
         <field name="model">cloudflare.operation</field>
         <field name="arch" type="xml">
             <search>
-                <field name="operation_id"/>
-                <field name="entity_id"/>
-                <filter name="filter_pending" string="Pendientes / reintentos"
-                        domain="[('state', 'in', ['pending', 'processing', 'error_retry'])]"/>
-                <filter name="filter_done" string="Aceptadas" domain="[('state', '=', 'done')]"/>
-                <filter name="filter_rejected" string="Rechazadas (funcional)" domain="[('state', '=', 'rejected')]"/>
-                <filter name="filter_dead_letter" string="Dead letter" domain="[('state', '=', 'dead_letter')]"/>
-                <filter name="group_state" string="Estado" context="{'group_by': 'state'}"/>
-                <filter name="group_entity" string="Tipo" context="{'group_by': 'entity_type'}"/>
+                <field name="operation_id" />
+                <field name="entity_id" />
+                <filter name="filter_pending"
+                    string="Pendientes / reintentos"
+                    domain="[('state', 'in', ['pending', 'processing', 'error_retry'])]" />
+                <filter name="filter_done" string="Aceptadas" domain="[('state', '=', 'done')]" />
+                <filter name="filter_rejected"
+                    string="Rechazadas (funcional)"
+                    domain="[('state', '=', 'rejected')]" />
+                <filter name="filter_dead_letter"
+                    string="Dead letter"
+                    domain="[('state', '=', 'dead_letter')]" />
+                <filter name="group_state" string="Estado" context="{'group_by': 'state'}" />
+                <filter name="group_entity" string="Tipo" context="{'group_by': 'entity_type'}" />
             </search>
         </field>
     </record>

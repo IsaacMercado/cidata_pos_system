@@ -27,7 +27,10 @@ class CloudflareOperation(models.Model):
         string="Tipo",
         required=True,
     )
-    entity_id = fields.Char(string="Entidad", help="client_id o receipt_number de la venta.")
+    entity_id = fields.Char(
+        string="Entidad",
+        help="client_id o receipt_number de la venta.",
+    )
     payload = fields.Text(string="Payload original", readonly=True)
     state = fields.Selection(
         [
@@ -45,7 +48,11 @@ class CloudflareOperation(models.Model):
     attempts = fields.Integer(string="Intentos")
     last_error = fields.Text(string="Último error")
     processed_at = fields.Datetime(string="Procesada")
-    pos_order_id = fields.Many2one("pos.order", string="Orden POS", readonly=True)
+    pos_order_id = fields.Many2one(
+        "pos.order",
+        string="Orden POS",
+        readonly=True,
+    )
     company_id = fields.Many2one(
         "res.company",
         default=lambda self: self.env.company,
@@ -76,7 +83,12 @@ class CloudflareOperation(models.Model):
             "installation_id": operation.get("installation_id"),
             "entity_type": entity_type,
             "entity_id": str(operation.get("entity_id") or ""),
-            "payload": json.dumps(operation.get("payload"), ensure_ascii=False, indent=2, sort_keys=True),
+            "payload": json.dumps(
+                operation.get("payload"),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
             "attempts": operation.get("attempt_count") or 0,
         }
         if existing:

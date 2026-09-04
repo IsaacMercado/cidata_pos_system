@@ -6,7 +6,11 @@ class CloudflarePaymentMap(models.Model):
     _description = "Mapeo de métodos de pago Cloudflare -> Odoo"
     _order = "cloudflare_code"
     _rec_name = "cloudflare_name"
-    cloudflare_code = fields.Char(string="Código en el POS", required=True)
+
+    cloudflare_code = fields.Char(
+        string="Código en el POS",
+        required=True,
+    )
     cloudflare_name = fields.Char(string="Nombre en el POS")
     payment_method_id = fields.Many2one(
         "pos.payment.method",
