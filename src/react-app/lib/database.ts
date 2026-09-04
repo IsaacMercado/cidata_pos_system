@@ -589,8 +589,22 @@ function downloadErrorLog(info: SyncErrorInfo) {
 async function readIndexedDbDatabase(name: string) {
   const request = indexedDB.open(name);
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error(`No se pudo abrir ${name}`));
+    const timeout = window.setTimeout(
+      () => reject(new Error(`Tiempo agotado al abrir ${name}`)),
+      5000,
+    );
+    request.onsuccess = () => {
+      window.clearTimeout(timeout);
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(request.error ?? new Error(`No se pudo abrir ${name}`));
+    };
+    request.onblocked = () => {
+      window.clearTimeout(timeout);
+      reject(new Error(`La base ${name} esta bloqueada por otra instancia`));
+    };
   });
 
   try {
@@ -615,17 +629,26 @@ export async function downloadDatabaseDiagnosticBackup() {
     throw new Error("Este navegador no permite leer las bases IndexedDB para diagnóstico.");
   }
   const databases = await indexedDB.databases();
+  const results: Array<Record<string, unknown>> = [];
+  for (const database of databases) {
+    if (!database.name || !database.name.includes("pos_offline")) continue;
+    try {
+      results.push(await readIndexedDbDatabase(database.name));
+    } catch (error) {
+      results.push({
+        name: database.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  if (results.length === 0) {
+    throw new Error("No se encontraron bases IndexedDB de pos_offline");
+  }
   const dump = {
     format: "cidata-rxdb-indexeddb-diagnostic",
     exportedAt: new Date().toISOString(),
     databaseName: DB_NAME,
-    databases: await Promise.all(
-      databases
-        .map((database) => database.name)
-        .filter((name): name is string => Boolean(name))
-        .filter((name) => name.includes(`pos_offline`))
-        .map(readIndexedDbDatabase),
-    ),
+    databases: results,
   };
   const blob = new Blob([JSON.stringify(dump, null, 2)], {
     type: "application/json;charset=utf-8",
@@ -658,7 +681,11 @@ function reportServerError(info: SyncErrorInfo) {
         label: isAdmin ? "Descargar BD + error" : "Descargar error",
         onClick: () => {
           downloadErrorLog(info);
-          if (isAdmin) void downloadDatabaseDiagnosticBackup();
+          if (isAdmin) {
+            void downloadDatabaseDiagnosticBackup().catch((error) => {
+              window.alert(error instanceof Error ? error.message : "No se pudo descargar la base de diagnóstico.");
+            });
+          }
         },
       },
       SERVER_ERROR_TOAST_DURATION,
