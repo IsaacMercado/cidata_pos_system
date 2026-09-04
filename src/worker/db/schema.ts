@@ -49,6 +49,14 @@ export const products = sqliteTable("products", {
   variantGroupId: integer("variant_group_id"),
   variantAttributes: text("variant_attributes", { mode: "json" }).notNull().default("[]"),
   variantValues: text("variant_values", { mode: "json" }).notNull().default("{}"),
+  externalId: text("external_id").unique(),
+  catalogVersion: integer("catalog_version").notNull().default(1),
+  templateExternalId: text("template_external_id"),
+  variantExternalId: text("variant_external_id"),
+  attributeValues: text("attribute_values", { mode: "json" }).notNull().default("{}"),
+  taxExternalId: text("tax_external_id"),
+  stockProjection: real("stock_projection").notNull().default(0),
+  stockOfficial: real("stock_official"),
 });
 
 export const variantGroups = sqliteTable("variant_groups", {
@@ -118,6 +126,25 @@ export const usersRelations = relations(users, ({ many }) => ({
   userPermissions: many(userPermissions),
 }));
 
+// Temporary operational changes are separate from the Odoo-owned catalog.
+export const catalogOverrides = sqliteTable("catalog_overrides", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  overrideType: text("override_type").notNull(),
+  value: text("value", { mode: "json" }).notNull(),
+  currency: text("currency").notNull().default("USD"),
+  reason: text("reason").notNull(),
+  createdBy: integer("created_by").notNull().references(() => users.id),
+  approvedBy: integer("approved_by").references(() => users.id),
+  status: text("status").notNull().default("pending"),
+  validFrom: text("valid_from").notNull(),
+  validUntil: text("valid_until"),
+  odooSyncedAt: text("odoo_synced_at"),
+  odooReference: text("odoo_reference"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
 export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
   user: one(users, {
     fields: [userPermissions.userId],
@@ -170,6 +197,12 @@ export const saleItems = sqliteTable("sale_items", {
   discountPercent: real("discount_percent").notNull().default(0),
   discountAmount: real("discount_amount").notNull().default(0),
   discounts: text("discounts", { mode: "json" }).notNull().default("[]"),
+  externalIdSnapshot: text("external_id_snapshot"),
+  codeSnapshot: text("code_snapshot"),
+  nameSnapshot: text("name_snapshot"),
+  unitSnapshot: text("unit_snapshot"),
+  taxRateSnapshot: real("tax_rate_snapshot").notNull().default(0),
+  catalogVersionSnapshot: integer("catalog_version_snapshot").notNull().default(1),
   subtotal: real("subtotal").notNull().default(0),
   taxAmount: real("tax_amount").notNull().default(0),
   total: real("total").notNull().default(0),
@@ -182,6 +215,10 @@ export const saleItemComponents = sqliteTable("sale_item_components", {
   saleItemId: integer("sale_item_id").notNull().references(() => saleItems.id),
   componentProductId: integer("component_product_id").notNull().references(() => products.id),
   quantity: real("quantity").notNull(),
+  externalIdSnapshot: text("external_id_snapshot"),
+  codeSnapshot: text("code_snapshot"),
+  nameSnapshot: text("name_snapshot"),
+  catalogVersionSnapshot: integer("catalog_version_snapshot").notNull().default(1),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
@@ -314,6 +351,29 @@ export const catalogChangeLog = sqliteTable("catalog_change_log", {
   appliedAt: text("applied_at"),
   result: text("result"),
   publishedAt: text("published_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const catalogPublications = sqliteTable("catalog_publications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  version: text("version").notNull().unique(),
+  companyExternalId: text("company_external_id").notNull(),
+  currency: text("currency").notNull().default("USD"),
+  publishedAt: text("published_at").notNull(),
+  status: text("status").notNull().default("active"),
+  payload: text("payload").notNull(),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const stockReconciliations = sqliteTable("stock_reconciliations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  stockOfficial: real("stock_official").notNull(),
+  stockProjection: real("stock_projection").notNull(),
+  difference: real("difference").notNull(),
+  observedAt: text("observed_at").notNull(),
+  source: text("source").notNull().default("odoo"),
+  resolved: integer("resolved").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 });
 
 // ─── Restaurants ─────────────────────────────────────────────────────────────

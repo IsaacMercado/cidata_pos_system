@@ -1,7 +1,7 @@
-import { and, eq, like, sql, getTableColumns } from "drizzle-orm";
+import { and, eq, getTableColumns, like, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { products, exchangeRates, variantGroups, variantAttributes, productVariants } from "../db/schema";
+import { catalogOverrides, exchangeRates, products, productVariants, users, variantAttributes, variantGroups } from "../db/schema";
 import type { Env } from "../index";
 import { validateJson, validationError } from "../lib/zvalidator";
 
@@ -47,6 +47,19 @@ const updateSchema = z.object({
 const groupSchema = z.object({ productId: z.number(), name: z.string().min(1).max(100), attributes: z.array(z.string()).default([]) });
 const attributeSchema = z.object({ name: z.string().min(1).max(100), position: z.number().int().min(0).default(0) });
 const variantSchema = z.object({ productId: z.number(), values: z.record(z.string()).default({}) });
+const overrideSchema = z.object({
+  productId: z.number().int().positive(),
+  overrideType: z.enum(["price", "discount"]),
+  value: z.object({ price: z.number().finite().min(0).optional(), percent: z.number().finite().min(0).max(100).optional() }),
+  currency: z.string().length(3).default("USD"),
+  reason: z.string().trim().min(1).max(500),
+  validFrom: z.string().datetime({ offset: true }),
+  validUntil: z.string().datetime({ offset: true }).optional(),
+}).superRefine((body, ctx) => {
+  const value = body.overrideType === "price" ? body.value.price : body.value.percent;
+  if (value === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["value"], message: "Valor requerido para el tipo de override" });
+  if (body.validUntil && Date.parse(body.validUntil) <= Date.parse(body.validFrom)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["validUntil"], message: "validUntil debe ser posterior a validFrom" });
+});
 
 interface ExchangeRate {
   name: string;
@@ -101,6 +114,88 @@ app.get("/", async (c) => {
     .orderBy(products.name)
     .all();
 
+  const now = new Date().toISOString();
+  const overrides = await db.select().from(catalogOverrides).where(eq(catalogOverrides.status, "active")).all();
+  const activeByProduct = new Map(overrides
+    .filter((override) => override.validFrom <= now && (!override.validUntil || override.validUntil > now))
+    .map((override) => [override.productId, override]));
+  return c.json({
+    data: result.map((product) => {
+      const override = activeByProduct.get(product.id);
+      const value = override?.value as { price?: number; percent?: number } | undefined;
+      const operationalPrice = override
+        ? override.overrideType === "price" ? value?.price : Number((product.price * (1 - (value?.percent ?? 0) / 100)).toFixed(2))
+        : product.price;
+      return { ...product, officialPrice: product.price, operationalPrice, activeOverride: override ?? null };
+    })
+  });
+});
+
+async function currentUser(c: any, db: any): Promise<{ id: number; isSuperuser: number } | null> {
+  const username = (c.get("jwtPayload") as Record<string, unknown> | undefined)?.sub;
+  if (typeof username !== "string") return null;
+  return await db.select({ id: users.id, isSuperuser: users.isSuperuser }).from(users).where(eq(users.username, username)).get() ?? null;
+}
+
+async function expireOverrides(db: any) {
+  const now = new Date().toISOString();
+  await db.update(catalogOverrides)
+    .set({ status: "expired", updatedAt: sql`datetime('now')` })
+    .where(and(eq(catalogOverrides.status, "active"), sql`${catalogOverrides.validUntil} IS NOT NULL AND ${catalogOverrides.validUntil} <= ${now}`))
+    .run();
+}
+
+app.get("/overrides", async (c) => {
+  const db = c.get("db");
+  await expireOverrides(db);
+  const productId = c.req.query("productId");
+  const rows = await db.select()
+    .from(catalogOverrides)
+    .where(productId ? eq(catalogOverrides.productId, Number(productId)) : undefined)
+    .orderBy(catalogOverrides.createdAt).all();
+  return c.json({ data: rows });
+});
+
+app.post("/overrides", async (c) => {
+  const db = c.get("db");
+  const user = await currentUser(c, db);
+  if (!user) return c.json({ error: "Usuario no encontrado" }, 403);
+  let body: z.infer<typeof overrideSchema>;
+  try { body = await validateJson(c, overrideSchema); } catch (e) { return c.json(validationError(e), 400); }
+  const product = await db.select({ id: products.id }).from(products).where(eq(products.id, body.productId)).get();
+  if (!product) return c.json({ error: "Product not found" }, 404);
+  const result = await db.insert(catalogOverrides).values({
+    ...body,
+    value: body.value,
+    validFrom: new Date(body.validFrom).toISOString(),
+    validUntil: body.validUntil ? new Date(body.validUntil).toISOString() : null,
+    createdBy: user.id,
+  }).returning().get();
+  return c.json({ data: result }, 201);
+});
+
+app.post("/overrides/:id/approve", async (c) => {
+  const db = c.get("db");
+  const user = await currentUser(c, db);
+  if (!user) return c.json({ error: "Usuario no encontrado" }, 403);
+  if (!user.isSuperuser) return c.json({ error: "Solo un supervisor puede aprobar overrides" }, 403);
+  const id = Number(c.req.param("id"));
+  const existing = await db.select().from(catalogOverrides).where(eq(catalogOverrides.id, id)).get();
+  if (!existing) return c.json({ error: "Override not found" }, 404);
+  if (existing.status !== "pending") return c.json({ error: "Solo se pueden aprobar overrides pendientes" }, 400);
+  await db.batch([
+    db.update(catalogOverrides).set({ status: "expired", updatedAt: sql`datetime('now')` }).where(and(eq(catalogOverrides.productId, existing.productId), eq(catalogOverrides.status, "active"))),
+    db.update(catalogOverrides).set({ status: "active", approvedBy: user.id, updatedAt: sql`datetime('now')` }).where(eq(catalogOverrides.id, id)),
+  ]);
+  return c.json({ data: await db.select().from(catalogOverrides).where(eq(catalogOverrides.id, id)).get() });
+});
+
+app.post("/overrides/:id/expire", async (c) => {
+  const db = c.get("db");
+  const id = Number(c.req.param("id"));
+  const result = await db.update(catalogOverrides).set({ status: "expired", updatedAt: sql`datetime('now')` })
+    .where(and(eq(catalogOverrides.id, id), eq(catalogOverrides.status, "active"))).returning().get();
+  if (!result) return c.json({ error: "Override activo no encontrado" }, 404);
   return c.json({ data: result });
 });
 
@@ -113,6 +208,7 @@ app.get("/variant-groups", async (c) => {
 });
 
 app.post("/variant-groups", async (c) => {
+  return c.json({ error: "Las variantes se administran en Odoo" }, 403);
   const db = c.get("db");
   let body: z.infer<typeof groupSchema>;
   try { body = await validateJson(c, groupSchema); } catch (e) { return c.json(validationError(e), 400); }
@@ -124,12 +220,14 @@ app.post("/variant-groups", async (c) => {
 
 app.get("/variant-groups/:id/attributes", async (c) => c.json({ data: await c.get("db").select().from(variantAttributes).where(eq(variantAttributes.groupId, Number(c.req.param("id")))).all() }));
 app.post("/variant-groups/:id/attributes", async (c) => {
+  return c.json({ error: "Las variantes se administran en Odoo" }, 403);
   let body: z.infer<typeof attributeSchema>;
   try { body = await validateJson(c, attributeSchema); } catch (e) { return c.json(validationError(e), 400); }
   return c.json({ data: await c.get("db").insert(variantAttributes).values({ ...body, groupId: Number(c.req.param("id")) }).returning().get() }, 201);
 });
 app.get("/variant-groups/:id/variants", async (c) => c.json({ data: await c.get("db").select().from(productVariants).where(eq(productVariants.groupId, Number(c.req.param("id")))).all() }));
 app.post("/variant-groups/:id/variants", async (c) => {
+  return c.json({ error: "Las variantes se administran en Odoo" }, 403);
   let body: z.infer<typeof variantSchema>;
   try { body = await validateJson(c, variantSchema); } catch (e) { return c.json(validationError(e), 400); }
   const groupId = Number(c.req.param("id"));
@@ -147,10 +245,21 @@ app.get("/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const product = await db.select().from(products).where(eq(products.id, id)).get();
   if (!product) return c.json({ error: "Product not found" }, 404);
-  return c.json({ data: product });
+  await expireOverrides(db);
+  const override = await db.select().from(catalogOverrides)
+    .where(and(eq(catalogOverrides.productId, id), eq(catalogOverrides.status, "active")))
+    .orderBy(catalogOverrides.createdAt).get();
+  const now = new Date().toISOString();
+  const activeOverride = override && override.validFrom <= now && (!override.validUntil || override.validUntil > now) ? override : null;
+  const value = activeOverride?.value as { price?: number; percent?: number } | undefined;
+  const operationalPrice = activeOverride
+    ? activeOverride.overrideType === "price" ? value?.price : Number((product.price * (1 - (value?.percent ?? 0) / 100)).toFixed(2))
+    : product.price;
+  return c.json({ data: { ...product, officialPrice: product.price, operationalPrice, activeOverride } });
 });
 
 app.post("/", async (c) => {
+  return c.json({ error: "El catálogo se administra en Odoo" }, 403);
   const db = c.get("db");
 
   let body: z.infer<typeof createSchema>;
@@ -178,6 +287,7 @@ app.post("/", async (c) => {
 });
 
 app.patch("/:id", async (c) => {
+  return c.json({ error: "El catálogo se administra en Odoo" }, 403);
   const db = c.get("db");
   const id = Number(c.req.param("id"));
 
@@ -208,6 +318,7 @@ app.patch("/:id", async (c) => {
 });
 
 app.delete("/:id", async (c) => {
+  return c.json({ error: "El catálogo se administra en Odoo" }, 403);
   const db = c.get("db");
   const id = Number(c.req.param("id"));
 

@@ -37,7 +37,7 @@ app.get("/stock", async (c) => {
 
   const conditions = [eq(products.isActive, 1)];
   if (lowStock === "true") {
-    conditions.push(sql`current_stock <= min_stock`);
+    conditions.push(sql`stock_projection <= min_stock`);
     conditions.push(sql`min_stock > 0`);
   }
 
@@ -47,6 +47,8 @@ app.get("/stock", async (c) => {
       code: products.code,
       name: products.name,
       currentStock: products.currentStock,
+      stockProjection: products.stockProjection,
+      stockOfficial: products.stockOfficial,
       minStock: products.minStock,
       unit: products.unit,
     })
@@ -56,6 +58,26 @@ app.get("/stock", async (c) => {
     .all();
 
   return c.json({ data: result });
+});
+
+// Current reconciliation view. The projection remains the sellable balance;
+// this endpoint only reports differences against the latest Odoo snapshot.
+app.get("/divergences", async (c) => {
+  const db = c.get("db");
+  const rows = await db.select({
+    id: products.id,
+    code: products.code,
+    name: products.name,
+    stockProjection: products.stockProjection,
+    stockOfficial: products.stockOfficial,
+    difference: sql<number>`stock_projection - stock_official`,
+    minStock: products.minStock,
+    unit: products.unit,
+  }).from(products)
+    .where(and(eq(products.isActive, 1), sql`stock_official IS NOT NULL AND stock_projection != stock_official`))
+    .orderBy(sql`ABS(stock_projection - stock_official) DESC`)
+    .all();
+  return c.json({ data: rows });
 });
 
 app.post("/adjust", async (c) => {

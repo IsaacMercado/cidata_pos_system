@@ -15,6 +15,11 @@ export interface ProductRate {
   fetchedAt: string;
 }
 
+export interface ReservationRate {
+  guests: number;
+  price: number;
+}
+
 export type ProductType = "simple" | "combo" | "reservation";
 export type CatalogStatus = "active" | "needs_review" | "inactive";
 
@@ -33,8 +38,11 @@ export interface Product {
   catalogStatus: CatalogStatus;
   minStock: number;
   currentStock: number;
+  stockProjection: number;
+  stockOfficial: number | null;
   isActive: number;
   rates?: ProductRate[];
+  reservationRates?: ReservationRate[];
   comboItems?: Array<{ componentProductId: number; quantity: number }>;
   variantGroupId?: number | null;
   variantAttributes?: string[];
@@ -92,6 +100,8 @@ export interface SalePayment {
   paymentMethodId: number;
   amount: number;
   amountUsd?: number;
+  amountOriginal?: number;
+  exchangeRate?: number;
   currency?: string;
   reference: string | null;
   paymentDate?: string | null;

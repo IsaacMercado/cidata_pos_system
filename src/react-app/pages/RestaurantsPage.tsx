@@ -58,6 +58,7 @@ function RestaurantsPageContent() {
   const [draftsByTable, setDraftsByTable] = useState<DraftMap>({});
   const [payDialog, setPayDialog] = useState(false);
   const [payments, setPayments] = useState<{ methodId: number; amount: string }[]>([]);
+  const [paymentNote, setPaymentNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loadingTable, setLoadingTable] = useState(false);
 
@@ -247,6 +248,7 @@ function removeTable(tableId: number) {
   function openPayDialog() {
     if (!activeOrder || draftItems.length > 0) return;
     setPayments([{ methodId: 1, amount: payableTotal.toFixed(2) }]);
+    setPaymentNote("");
     setPayDialog(true);
   }
 
@@ -274,6 +276,7 @@ function removeTable(tableId: number) {
         if (!online) throw new Error("Esta cuenta del servidor debe sincronizarse antes de cobrar offline");
         await api.sales.pay(activeOrder.id, {
           payments: payments.map((payment) => ({ paymentMethodId: payment.methodId, amount: parseFloat(payment.amount) })),
+          notes: paymentNote.trim() || undefined,
         });
         setPayDialog(false);
         setActiveOrder(null);
@@ -286,7 +289,8 @@ function removeTable(tableId: number) {
       if (!target) throw new Error("La cuenta local ya no existe");
       await target.incrementalPatch({
         status: "completed",
-        payments: payments.map((payment) => ({ paymentMethodId: payment.methodId, amount: parseFloat(payment.amount), currency: "USD" })),
+         payments: payments.map((payment) => ({ paymentMethodId: payment.methodId, amount: parseFloat(payment.amount), currency: "USD" })),
+         notes: paymentNote.trim() || null,
         syncStatus: "pending",
         updatedAt: new Date().toISOString(),
       });
@@ -353,11 +357,13 @@ function removeTable(tableId: number) {
         currency="USD"
         rate={0}
         payments={payments}
+        note={paymentNote}
         paymentsTotal={paymentsTotal}
         paymentDiff={paymentDiff}
         submitting={submitting}
         onAddPaymentSplit={addPaymentSplit}
         onUpdatePayment={updatePayment}
+        onNoteChange={setPaymentNote}
         onRemovePayment={removePayment}
         onSubmitPayment={submitPayment}
       />

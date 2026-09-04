@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { integrationOperations, paymentMethods, saleItems, salePayments, sales, products, reservations } from "../db/schema";
+import { eq, inArray } from "drizzle-orm";
+import { integrationOperations, paymentMethods, saleItems, salePayments, sales, products, reservations, saleItemComponents } from "../db/schema";
 import type { Db } from "../db";
 
 export type SaleIntegrationPayload = {
@@ -27,11 +27,15 @@ export type SaleIntegrationPayload = {
     discount_percent: number;
     discount_amount: number;
     discounts: { type: "fixed" | "percent"; value: number; label?: string }[];
+    promotion_discounts?: { type: "fixed" | "percent"; value: number; label?: string }[];
+    external_id?: string | null;
+    catalog_version?: number;
     tax_rate: number;
     tax_amount: number;
     subtotal: number;
     total: number;
     is_combo_component?: boolean;
+    bom_components?: Array<{ external_id: string | null; code: string | null; name: string | null; quantity: number; catalog_version: number }>;
   }>;
   payments: Array<{
     method_code: string | null;
@@ -72,6 +76,7 @@ export async function buildSalePayload(db: Db, saleId: number): Promise<SaleInte
 
   const itemRows = await db
     .select({
+      saleItemId: saleItems.id,
       productId: saleItems.productId,
       quantity: saleItems.quantity,
       unitPrice: saleItems.unitPrice,
@@ -86,6 +91,14 @@ export async function buildSalePayload(db: Db, saleId: number): Promise<SaleInte
       unit: products.unit,
       taxRate: products.taxRate,
       productType: products.productType,
+      externalId: products.externalId,
+      catalogVersion: products.catalogVersion,
+      externalIdSnapshot: saleItems.externalIdSnapshot,
+      codeSnapshot: saleItems.codeSnapshot,
+      nameSnapshot: saleItems.nameSnapshot,
+      unitSnapshot: saleItems.unitSnapshot,
+      taxRateSnapshot: saleItems.taxRateSnapshot,
+      catalogVersionSnapshot: saleItems.catalogVersionSnapshot,
     })
     .from(saleItems)
     .innerJoin(products, eq(products.id, saleItems.productId))
@@ -93,6 +106,11 @@ export async function buildSalePayload(db: Db, saleId: number): Promise<SaleInte
     .all();
 
   const comboIds = new Set(itemRows.filter((i) => i.productType === "combo").map((i) => i.productId));
+  const componentRows = await db
+    .select()
+    .from(saleItemComponents)
+    .where(inArray(saleItemComponents.saleItemId, itemRows.map((item) => item.saleItemId)))
+    .all();
   const paymentRows = await db
     .select({
       amount: salePayments.amount,
@@ -151,19 +169,22 @@ export async function buildSalePayload(db: Db, saleId: number): Promise<SaleInte
     },
     items: itemRows.map((item) => ({
       product_id: item.productId,
-      code: item.code,
-      name: item.name,
-      unit: item.unit,
+       code: item.codeSnapshot ?? item.code,
+       name: item.nameSnapshot ?? item.name,
+       unit: item.unitSnapshot ?? item.unit,
+       external_id: item.externalIdSnapshot ?? item.externalId ?? item.code,
+       catalog_version: item.catalogVersionSnapshot ?? item.catalogVersion,
       quantity: item.quantity,
       unit_price: item.unitPrice,
       discount_percent: item.discountPercent,
       discount_amount: item.discountAmount,
-      discounts: Array.isArray(item.discounts) ? item.discounts : [],
-      tax_rate: item.taxRate,
+       discounts: Array.isArray(item.discounts) ? item.discounts : [],
+       promotion_discounts: Array.isArray(item.discounts) ? item.discounts : [],
+       tax_rate: item.taxRateSnapshot ?? item.taxRate,
       tax_amount: item.taxAmount,
       subtotal: item.subtotal,
       total: item.total,
-      ...(comboIds.has(item.productId) ? { is_combo_component: false } : {}),
+       ...(comboIds.has(item.productId) ? { is_combo_component: false, bom_components: componentRows.filter((component) => component.saleItemId === item.saleItemId).map((component) => ({ external_id: component.externalIdSnapshot ?? component.codeSnapshot, code: component.codeSnapshot, name: component.nameSnapshot, quantity: component.quantity, catalog_version: component.catalogVersionSnapshot })) } : {}),
     })),
     payments: paymentRows.map((p) => ({
       method_code: p.methodCode,

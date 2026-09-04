@@ -66,6 +66,7 @@ export function usePayment({
   const [submitting, setSubmitting] = useState(false);
   const [receiptSale, setReceiptSale] = useState<any | null>(null);
   const [payments, setPayments] = useState<PaymentInput[]>([]);
+  const [note, setNote] = useState("");
 
   const paymentsTotal = useMemo(
     () =>
@@ -98,6 +99,7 @@ export function usePayment({
         phone: "",
       },
     ]);
+    setNote("");
     setPayDialog(true);
   }, [items.length, totalDisplay, currency]);
 
@@ -232,22 +234,26 @@ export function usePayment({
       discountTotal,
       total,
       status: "completed",
-      notes: null,
+       notes: note.trim() || null,
       items: saleItems,
       ...(reservationData.length > 0 ? { reservations: reservationData } : {}),
       payments: validPayments.map((p) => ({
         paymentMethodId: p.methodId,
-        amount:
-          totalPaymentsUsd > 0
-            ? Math.round(
-                total *
-                  (toUsd(parseFloat(p.amount), p.currency, rateMap) /
-                    totalPaymentsUsd) *
-                  100,
-              ) / 100
-            : 0,
+        amount: (() => {
+          const amountUsd = toUsd(parseFloat(p.amount), p.currency, rateMap);
+          return totalPaymentsUsd > 0
+            ? Math.round((total * (amountUsd / totalPaymentsUsd)) * 100) / 100
+            : 0;
+        })(),
+        amountUsd: (() => {
+          const amountUsd = toUsd(parseFloat(p.amount), p.currency, rateMap);
+          return totalPaymentsUsd > 0
+            ? Math.round((total * (amountUsd / totalPaymentsUsd)) * 100) / 100
+            : 0;
+        })(),
         currency: p.currency === "VES" ? "VES" : "USD",
         amountOriginal: parseFloat(p.amount) || 0,
+        exchangeRate: p.currency === "VES" ? (rateMap.VES || 1) : 1,
         reference: p.reference || null,
         paymentDate: p.paymentDate || null,
         phone: p.phone || null,
@@ -302,6 +308,7 @@ export function usePayment({
     payments,
     items,
     rateMap,
+    note,
     paymentDetailsError,
     toast,
     onPaid,
@@ -314,6 +321,8 @@ export function usePayment({
     receiptSale,
     setReceiptSale,
     payments,
+    note,
+    setNote,
     paymentsTotal,
     paymentDiff,
     openPayDialog,

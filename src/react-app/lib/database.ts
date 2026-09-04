@@ -31,6 +31,11 @@ export interface ProductRate {
   fetchedAt: string;
 }
 
+export interface ReservationRate {
+  guests: number;
+  price: number;
+}
+
 export interface ComboItemRef {
   componentProductId: number;
   quantity: number;
@@ -55,6 +60,7 @@ export interface ProductDoc {
   currentStock: number;
   isActive: number;
   rates: ProductRate[];
+  reservationRates: ReservationRate[];
   comboItems: ComboItemRef[];
   variantGroupId?: number | null;
   variantAttributes: string[];
@@ -105,6 +111,9 @@ export interface SalePaymentData {
   paymentMethodId: number;
   amount: number;
   currency?: string;
+  amountOriginal?: number;
+  exchangeRate?: number;
+  amountUsd?: number;
   reference?: string | null;
   paymentDate?: string | null;
   phone?: string | null;
@@ -156,7 +165,7 @@ export interface OperatorDoc {
 
 const productSchema: RxJsonSchema<ProductDoc> = {
   title: "product",
-  version: 1,
+  version: 2,
   primaryKey: "rxid",
   type: "object",
   properties: {
@@ -188,6 +197,18 @@ const productSchema: RxJsonSchema<ProductDoc> = {
           rate: { type: "number" },
           fetchedAt: { type: "string" },
         },
+      },
+    },
+    reservationRates: {
+      type: "array",
+      default: [],
+      items: {
+        type: "object",
+        properties: {
+          guests: { type: "number" },
+          price: { type: "number" },
+        },
+        required: ["guests", "price"],
       },
     },
     comboItems: {
@@ -341,6 +362,9 @@ const saleSchema: RxJsonSchema<SaleDoc> = {
           paymentMethodId: { type: "number" },
           amount: { type: "number" },
           currency: { type: ["string", "null"] },
+          amountOriginal: { type: ["number", "null"] },
+          exchangeRate: { type: ["number", "null"] },
+          amountUsd: { type: ["number", "null"] },
           reference: { type: ["string", "null"] },
           paymentDate: { type: ["string", "null"] },
           phone: { type: ["string", "null"] },
@@ -425,6 +449,10 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
           variantGroupId: doc.variantGroupId ?? null,
           variantAttributes: doc.variantAttributes ?? [],
           variantValues: doc.variantValues ?? {},
+        }),
+        2: (doc: ProductDoc) => ({
+          ...doc,
+          reservationRates: doc.reservationRates ?? [],
         }),
       },
     },
@@ -565,7 +593,9 @@ function buildPushBody(docData: any) {
       paymentMethodId: Number(payment.paymentMethodId),
       amount: Number(payment.amount),
       currency: payment.currency || "USD",
-      ...(payment.amountOriginal != null ? { amountOriginal: Number(payment.amountOriginal) } : {}),
+      amountOriginal: Number(payment.amountOriginal ?? payment.amount),
+      exchangeRate: Number(payment.exchangeRate ?? (payment.currency === "USD" ? 1 : 0)),
+      amountUsd: Number(payment.amountUsd ?? payment.amount),
       ...(payment.reference ? { reference: String(payment.reference) } : {}),
       ...(payment.paymentDate ? { paymentDate: String(payment.paymentDate) } : {}),
       ...(payment.phone ? { phone: String(payment.phone) } : {}),

@@ -20,7 +20,7 @@ const modules = [
   {
     href: "/products",
     label: "Productos",
-    desc: "Gestionar inventario",
+    desc: "Catálogo publicado y conteos",
     icon: Package,
     screen: "products",
     color: "bg-emerald-500",
@@ -43,8 +43,8 @@ const modules = [
   },
   {
     href: "/purchases",
-    label: "Inventario",
-    desc: "Órdenes de compra",
+    label: "Solicitudes de compra",
+    desc: "Solicitar reposición",
     icon: Package,
     screen: "purchases",
     color: "bg-teal-500",

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { reservationRates, products } from "../db/schema";
@@ -49,6 +49,12 @@ app.post("/", async (c) => {
     .returning()
     .get();
 
+  await db
+    .update(products)
+    .set({ updatedAt: sql`datetime('now')` })
+    .where(eq(products.id, body.productId))
+    .run();
+
   return c.json({ data: result }, 201);
 });
 
@@ -60,6 +66,13 @@ app.patch("/:id", async (c) => {
   try { body = await validateJson(c, schema); }
   catch (e) { return c.json(validationError(e), 400); }
 
+  const existing = await db
+    .select({ productId: reservationRates.productId })
+    .from(reservationRates)
+    .where(eq(reservationRates.id, id))
+    .get();
+  if (!existing) return c.json({ error: "Not found" }, 404);
+
   const result = await db
     .update(reservationRates)
     .set(body)
@@ -67,7 +80,11 @@ app.patch("/:id", async (c) => {
     .returning()
     .get();
 
-  if (!result) return c.json({ error: "Not found" }, 404);
+  await db
+    .update(products)
+    .set({ updatedAt: sql`datetime('now')` })
+    .where(eq(products.id, existing.productId))
+    .run();
   return c.json({ data: result });
 });
 
@@ -75,7 +92,19 @@ app.delete("/:id", async (c) => {
   const db = c.get("db");
   const id = Number(c.req.param("id"));
 
+  const existing = await db
+    .select({ productId: reservationRates.productId })
+    .from(reservationRates)
+    .where(eq(reservationRates.id, id))
+    .get();
+  if (!existing) return c.json({ error: "Not found" }, 404);
+
   await db.delete(reservationRates).where(eq(reservationRates.id, id)).run();
+  await db
+    .update(products)
+    .set({ updatedAt: sql`datetime('now')` })
+    .where(eq(products.id, existing.productId))
+    .run();
   return c.json({ success: true });
 });
 

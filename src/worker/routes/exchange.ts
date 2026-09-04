@@ -1,9 +1,9 @@
 import { desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { createDb } from "../db";
 import { exchangeRates, products } from "../db/schema";
 import type { Env } from "../index";
-import { createDb } from "../db";
 
 const app = new Hono<Env>();
 

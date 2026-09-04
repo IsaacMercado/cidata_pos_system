@@ -5,6 +5,7 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import {
   catalogChangeLog,
+  catalogPublications,
   categories,
   comboItems,
   exchangeRates,
@@ -15,6 +16,7 @@ import {
   restaurants,
   restaurantTables,
   sales,
+  stockReconciliations,
 } from "../db/schema";
 import type { Env } from "../index";
 import { buildSalePayload } from "../lib/integration";
@@ -87,7 +89,6 @@ app.post("/auth", async (c) => {
     expires_in: INTEGRATION_TOKEN_TTL,
   });
 });
-
 // GET /api/integration/sync-status
 app.get("/sync-status", async (c) => {
   const db = c.get("db");
@@ -143,6 +144,8 @@ app.get("/catalog/changes", async (c) => {
       catalog_status: products.catalogStatus,
       min_stock: products.minStock,
       current_stock: products.currentStock,
+      stock_projection: products.stockProjection,
+      stock_official: products.stockOfficial,
       is_active: products.isActive,
       updated_at: products.updatedAt,
       variant_group_id: products.variantGroupId,
@@ -269,6 +272,53 @@ app.get("/catalog/changes", async (c) => {
       price: r.price,
     })),
   });
+});
+
+// Official Odoo stock is reconciled here, never copied over the operational
+// projection used by the POS to support offline sales.
+const stockPublishSchema = z.object({
+  observed_at: z.string().min(1).optional(),
+  stock: z.array(z.object({
+    external_ref: z.string().min(1),
+    stock_official: z.number().finite().min(0),
+  })).min(1),
+});
+
+app.post("/stock/publish", async (c) => {
+  const db = c.get("db");
+  let body: z.infer<typeof stockPublishSchema>;
+  try {
+    body = stockPublishSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: "Invalid stock publication", details: String(e) }, 400);
+  }
+
+  const observedAt = body.observed_at || new Date().toISOString();
+  let updated = 0;
+  let missing = 0;
+  for (const item of body.stock) {
+    const product = await db.select({ id: products.id, stockProjection: products.stockProjection })
+      .from(products).where(eq(products.externalId, item.external_ref)).get();
+    if (!product) {
+      missing += 1;
+      continue;
+    }
+    const difference = product.stockProjection - item.stock_official;
+    await db.batch([
+      db.update(products).set({ stockOfficial: item.stock_official, updatedAt: sql`datetime('now')` })
+        .where(eq(products.id, product.id)),
+      db.insert(stockReconciliations).values({
+        productId: product.id,
+        stockOfficial: item.stock_official,
+        stockProjection: product.stockProjection,
+        difference,
+        observedAt,
+        source: "odoo",
+      }),
+    ]);
+    updated += 1;
+  }
+  return c.json({ success: true, updated, missing, observed_at: observedAt });
 });
 
 // GET /api/integration/operations/pending?limit=50
@@ -456,6 +506,114 @@ const publishSchema = z.object({
   })).min(1),
 });
 
+const fullPublicationSchema = z.object({
+  catalog_version: z.string().min(1),
+  company_external_id: z.string().min(1),
+  currency: z.string().min(1).default("USD"),
+  published_at: z.string().min(1),
+  categories: z.array(z.record(z.any())).default([]),
+  products: z.array(z.record(z.any())).default([]),
+  reservation_rates: z.array(z.record(z.any())).default([]),
+}).passthrough();
+
+// POST /api/integration/catalog/publications (complete Odoo publication)
+app.post("/catalog/publications", async (c) => {
+  const db = c.get("db");
+  let body: z.infer<typeof fullPublicationSchema>;
+  try {
+    body = fullPublicationSchema.parse(await c.req.json());
+  } catch (e) {
+    return c.json({ error: "Invalid catalog publication", details: String(e) }, 400);
+  }
+
+  const publishedCodes = new Set<string>();
+  for (const category of body.categories) {
+    const categoryId = Number(category.cloudflare_id);
+    if (!Number.isInteger(categoryId) || categoryId <= 0 || typeof category.name !== "string") continue;
+    await db.insert(categories).values({
+      id: categoryId,
+      name: category.name,
+      parentId: typeof category.parent_cloudflare_id === "number" ? category.parent_cloudflare_id : null,
+      isActive: category.is_active === false ? 0 : 1,
+    }).onConflictDoUpdate({
+      target: categories.id,
+      set: {
+        name: category.name,
+        parentId: typeof category.parent_cloudflare_id === "number" ? category.parent_cloudflare_id : null,
+        isActive: category.is_active === false ? 0 : 1,
+        updatedAt: sql`datetime('now')`,
+      },
+    }).run();
+  }
+
+  for (const item of body.products) {
+    const code = typeof item.external_id === "string" ? item.external_id : typeof item.sku === "string" ? item.sku : null;
+    if (!code) continue;
+    publishedCodes.add(code);
+    const values = {
+      externalId: code,
+      name: typeof item.name === "string" ? item.name : code,
+      price: typeof item.price === "number" ? item.price : 0,
+      cost: typeof item.cost === "number" ? item.cost : 0,
+      barcode: typeof item.barcode === "string" ? item.barcode : null,
+      description: typeof item.description === "string" ? item.description : null,
+      taxRate: typeof item.tax_rate_percent === "number" ? item.tax_rate_percent : 0,
+      taxExternalId: typeof item.tax_external_id === "string" ? item.tax_external_id : null,
+      unit: typeof item.unit === "string" ? item.unit : "unit",
+      productType: typeof item.product_type === "string" ? item.product_type : "simple",
+      catalogStatus: item.is_active === false ? "inactive" : "active",
+      isActive: item.is_active === false ? 0 : 1,
+      minStock: typeof item.min_stock === "number" ? item.min_stock : 0,
+      // Stock is published separately so a catalog refresh cannot erase
+      // operational sales made since the previous Odoo synchronization.
+      templateExternalId: typeof item.template_external_id === "string" ? item.template_external_id : null,
+      variantExternalId: typeof item.variant_external_id === "string" ? item.variant_external_id : null,
+      attributeValues: item.attribute_values && typeof item.attribute_values === "object" ? item.attribute_values : {},
+      variantAttributes: Array.isArray(item.variant_attributes) ? item.variant_attributes : [],
+      variantValues: item.variant_values && typeof item.variant_values === "object" ? item.variant_values : {},
+      catalogVersion: 1,
+      updatedAt: sql`datetime('now')`,
+    };
+    const existing = await db.select({ id: products.id }).from(products).where(eq(products.externalId, code)).get();
+    if (existing) await db.update(products).set(values).where(eq(products.id, existing.id)).run();
+    else await db.insert(products).values({ code, ...values }).run();
+  }
+
+  if (publishedCodes.size > 0) {
+    await db.update(products).set({ isActive: 0, catalogStatus: "inactive", updatedAt: sql`datetime('now')` })
+      .where(sql`${products.externalId} IS NOT NULL AND ${products.externalId} NOT IN (${sql.join([...publishedCodes].map((code) => sql`${code}`), sql`, `)})`)
+      .run();
+  }
+
+  for (const rate of body.reservation_rates) {
+    const code = typeof rate.product_code === "string" ? rate.product_code : null;
+    const guests = Number(rate.guests);
+    const price = Number(rate.price);
+    if (!code || !Number.isInteger(guests) || guests < 1 || !Number.isFinite(price) || price < 0) continue;
+    const product = await db.select({ id: products.id }).from(products).where(eq(products.externalId, code)).get();
+    if (!product) continue;
+    await db.insert(reservationRates).values({ productId: product.id, guests, price })
+      .onConflictDoUpdate({
+        target: [reservationRates.productId, reservationRates.guests],
+        set: { price },
+      }).run();
+  }
+
+  await db.insert(catalogPublications).values({
+    version: body.catalog_version,
+    companyExternalId: body.company_external_id,
+    currency: body.currency,
+    publishedAt: body.published_at,
+    payload: JSON.stringify(body),
+    status: "active",
+  }).onConflictDoUpdate({
+    target: catalogPublications.version,
+    set: { payload: JSON.stringify(body), publishedAt: body.published_at, status: "active" },
+  }).run();
+
+  return c.json({ success: true, version: body.catalog_version, products: publishedCodes.size });
+});
+
 app.post("/catalog/publish", async (c) => {
   const db = c.get("db");
 
@@ -489,8 +647,6 @@ app.post("/catalog/publish", async (c) => {
           productType: typeof data.product_type === "string" ? data.product_type : undefined,
           catalogStatus: typeof data.catalog_status === "string" ? data.catalog_status : undefined,
           minStock: typeof data.min_stock === "number" ? data.min_stock : undefined,
-          // Fase 7: ajustes de inventario oficial (Odoo -> POS).
-          currentStock: typeof data.current_stock === "number" ? data.current_stock : undefined,
           isActive: change.action === "deactivate" ? 0 : typeof data.is_active === "boolean" ? (data.is_active ? 1 : 0) : undefined,
           variantAttributes: Array.isArray(data.variant_attributes) ? data.variant_attributes : undefined,
           variantValues: data.variant_values && typeof data.variant_values === "object" ? data.variant_values : undefined,

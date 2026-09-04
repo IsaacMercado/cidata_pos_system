@@ -161,3 +161,13 @@ AFTER UPDATE ON users WHEN OLD.updated_at IS NOT NULL
 BEGIN UPDATE users SET updated_at = datetime('now') WHERE id = NEW.id; END;
 
 DROP TRIGGER IF EXISTS trg_products_stock_adjustment;
+
+-- Compatibility bridge: sales and inventory routes still write current_stock,
+-- while the public contract exposes stock_projection.
+DROP TRIGGER IF EXISTS trg_products_projection_compat;
+CREATE TRIGGER IF NOT EXISTS trg_products_projection_compat
+AFTER UPDATE OF current_stock ON products
+WHEN NEW.current_stock != OLD.current_stock
+BEGIN
+  UPDATE products SET stock_projection = NEW.current_stock WHERE id = NEW.id;
+END;

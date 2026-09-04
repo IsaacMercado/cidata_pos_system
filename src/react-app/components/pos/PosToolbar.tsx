@@ -13,6 +13,7 @@ interface PosToolbarProps {
   currency: string;
   onCurrencyChange: (c: string) => void;
   exchangeRateText: string | null;
+  canResetDatabase: boolean;
 }
 
 export function PosToolbar({
@@ -26,6 +27,7 @@ export function PosToolbar({
   currency,
   onCurrencyChange,
   exchangeRateText,
+  canResetDatabase,
 }: PosToolbarProps) {
   return (
     <div className="sticky top-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-800 px-3 pt-3 pb-2 space-y-2 flex-shrink-0">
@@ -81,22 +83,25 @@ export function PosToolbar({
           >
             <Archive size={16} />
           </button>
-          <button
-            onClick={async () => {
-              if (!window.confirm("¿Está seguro de que desea borrar todos los datos locales? Descargue primero un respaldo. Las ventas pendientes de sincronización se perderán.")) return;
-              try {
-                await downloadDatabaseBackup();
-                await resetDatabase();
-                location.reload();
-              } catch {
-                window.alert("No se borró la base local porque no se pudo generar el respaldo.");
-              }
-            }}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            title="Restaurar DB — Limpia la base de datos local y vuelve a sincronizar desde el servidor"
-          >
-            <Database size={16} />
-          </button>
+          {canResetDatabase && (
+            <button
+              onClick={async () => {
+                if (!canResetDatabase) return;
+                if (!window.confirm("¿Está seguro de que desea borrar todos los datos locales? Descargue primero un respaldo. Las ventas pendientes de sincronización se perderán.")) return;
+                try {
+                  await downloadDatabaseBackup();
+                  await resetDatabase();
+                  location.reload();
+                } catch {
+                  window.alert("No se borró la base local porque no se pudo generar el respaldo.");
+                }
+              }}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              title="Restaurar DB — Limpia la base de datos local y vuelve a sincronizar desde el servidor"
+            >
+              <Database size={16} />
+            </button>
+          )}
           <button
             onClick={() => location.reload()}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"

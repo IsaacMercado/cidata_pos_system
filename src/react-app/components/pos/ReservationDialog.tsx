@@ -1,10 +1,11 @@
 import { useEffect, useState } from "preact/hooks";
 import { Button, Dialog, Input } from "../ui";
 import { api } from "../../lib/api";
+import type { ReservationRate } from "../../lib/types";
 
 interface ReservationDialogProps {
   open: boolean;
-  product: { id: number; name: string; price: number } | null;
+  product: { id: number; name: string; price: number; reservationRates?: ReservationRate[] } | null;
   onConfirm: (data: {
     checkIn: string;
     checkOut: string;
@@ -72,8 +73,9 @@ export function ReservationDialog({
     ),
   );
   const validDates = Boolean(checkIn && checkOut && checkOut > checkIn);
-  const guestPrice = product.price;
-  const total = guestPrice * nights * guests;
+  const guestPrice = product.reservationRates?.find((rate) => rate.guests === guests)?.price ?? product.price;
+  // A rate is the room's nightly price for the selected guest count.
+  const total = guestPrice * nights;
 
   function handleConfirm() {
     if (!validDates) return;
@@ -140,7 +142,7 @@ export function ReservationDialog({
         <div className="bg-zinc-50 rounded-xl p-3 space-y-1 text-sm">
           <div className="flex justify-between text-zinc-500">
             <span>Precio por noche</span>
-            <span>${guestPrice.toFixed(2)} x huésped</span>
+            <span>${guestPrice.toFixed(2)} por noche</span>
           </div>
           <div className="flex justify-between text-zinc-500">
             <span>Noches</span>

@@ -21,7 +21,7 @@ const createSchema = z.object({
   status: statusSchema.default("pending"),
 }).superRefine((value, ctx) => {
   if (value.checkOut <= value.checkIn) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["checkOut"], message: "Check-out debe ser posterior" });
-  if (Math.abs(value.total - ((Date.parse(`${value.checkOut}T00:00:00Z`) - Date.parse(`${value.checkIn}T00:00:00Z`)) / 86400000) * value.guestPrice * value.guests) > 0.01) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["total"], message: "Total inválido" });
+  if (Math.abs(value.total - ((Date.parse(`${value.checkOut}T00:00:00Z`) - Date.parse(`${value.checkIn}T00:00:00Z`)) / 86400000) * value.guestPrice) > 0.01) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["total"], message: "Total inválido" });
 });
 
 app.get("/availability", async (c) => {

@@ -16,11 +16,13 @@ interface PaymentDialogProps {
   currency: string;
   exchangeRateText: string | null;
   payments: PaymentInput[];
+  note: string;
   paymentsTotal: number;
   paymentDiff: number;
   submitting: boolean;
   currencies: CurrencyOption[];
   onUpdatePayment: (index: number, field: keyof PaymentInput, value: string | number) => void;
+  onNoteChange: (value: string) => void;
   onRemovePayment: (index: number) => void;
   onAddPaymentSplit: () => void;
   onSubmit: () => void;
@@ -38,11 +40,13 @@ export function PaymentDialog({
   currency,
   exchangeRateText,
   payments,
+  note,
   paymentsTotal,
   paymentDiff,
   submitting,
   currencies,
   onUpdatePayment,
+  onNoteChange,
   onRemovePayment,
   onAddPaymentSplit,
   onSubmit,
@@ -182,6 +186,20 @@ export function PaymentDialog({
         <Plus size={14} className="inline mr-1 -mt-0.5" />
         Agregar otra forma de pago
       </button>
+
+      <div className="mt-4 space-y-1.5">
+        <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="payment-note">
+          Nota de la venta
+        </label>
+        <textarea
+          id="payment-note"
+          className="min-h-20 w-full resize-y rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm outline-none focus:border-violet-500 dark:bg-slate-800 dark:text-white"
+          placeholder="Agrega una nota para esta venta..."
+          maxLength={2000}
+          value={note}
+          onInput={(e: any) => onNoteChange(e.target.value)}
+        />
+      </div>
 
       {/* ── Payment summary ── */}
       <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm">

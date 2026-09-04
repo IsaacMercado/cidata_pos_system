@@ -29,7 +29,7 @@ export function PurchaseOrdersPage() {
         icon={Package}
         action={
           <Button onClick={() => setShowCreate(true)}>
-            <Plus size={14} /> Nueva Recepción
+            <Plus size={14} /> Nueva Solicitud
           </Button>
         }
       />
@@ -38,7 +38,7 @@ export function PurchaseOrdersPage() {
         <Table>
           <Table.Head>
             <Table.Row>
-              <Table.Header>N° Recepción</Table.Header>
+              <Table.Header>N° Solicitud</Table.Header>
               <Table.Header className="text-right">Items</Table.Header>
               <Table.Header className="text-center">Estado</Table.Header>
               <Table.Header className="text-right">Fecha</Table.Header>
@@ -144,7 +144,7 @@ function CreatePurchaseOrder({ products, onClose, onCreated }: {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-neutral-700">
-        <CardTitle>Nueva Recepción</CardTitle>
+         <CardTitle>Nueva Solicitud de Compra</CardTitle>
         <DialogClose onClose={onClose}><XIcon size={20} /></DialogClose>
       </div>
 
@@ -207,7 +207,7 @@ function CreatePurchaseOrder({ products, onClose, onCreated }: {
 
         <div className="flex gap-2 justify-end pt-4 border-t border-neutral-200 dark:border-neutral-700">
           <DialogClose onClose={onClose}>Cancelar</DialogClose>
-          <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Registrar Recepción"}</Button>
+           <Button type="submit" disabled={saving}>{saving ? "Guardando..." : "Registrar Solicitud"}</Button>
         </div>
       </form>
     </div>

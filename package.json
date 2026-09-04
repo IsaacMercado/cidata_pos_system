@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:stack": "bash scripts/dev-stack.sh",
+    "dev:stack:integration": "WRANGLER_CONFIG=wrangler.integration.local.json bash scripts/dev-stack.sh",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",

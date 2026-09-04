@@ -5,7 +5,9 @@ import {
   categories,
   comboItems,
   exchangeRates,
+  paymentMethods,
   products,
+  reservationRates,
   reservations,
   restaurantTables,
   restaurants,
@@ -14,11 +16,10 @@ import {
   sales,
   sequences,
   users,
-  paymentMethods,
 } from "../db/schema";
 import type { Env } from "../index";
-import { reservationTotal, salePushSchema, validatePaymentDetails, computeSaleItemValues } from "../lib/sales-contract";
 import { enqueueSaleOutboxStatement } from "../lib/integration";
+import { computeSaleItemValues, reservationTotal, salePushSchema, validatePaymentDetails } from "../lib/sales-contract";
 
 async function getCurrentRate(
   db: any,
@@ -119,6 +120,25 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
         .from(comboItems)
         .all();
 
+      const allReservationRates = await db
+        .select({
+          productId: reservationRates.productId,
+          guests: reservationRates.guests,
+          price: reservationRates.price,
+        })
+        .from(reservationRates)
+        .all();
+
+      const reservationRatesByProduct = new Map<
+        number,
+        Array<{ guests: number; price: number }>
+      >();
+      for (const rate of allReservationRates) {
+        const list = reservationRatesByProduct.get(rate.productId) ?? [];
+        list.push({ guests: rate.guests, price: rate.price });
+        reservationRatesByProduct.set(rate.productId, list);
+      }
+
       const comboByProduct = new Map<
         number,
         Array<{ componentProductId: number; quantity: number }>
@@ -142,11 +162,18 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
           fetchedAt: data.fetchedAt,
         })),
         _comboItems: comboByProduct.get(row.products.id) ?? [],
+        _reservationRates: reservationRatesByProduct.get(row.products.id) ?? [],
       }));
     },
     transform: (row) => ({
       rxid: String(row.products.id),
       id: row.products.id,
+      externalId: row.products.externalId,
+      templateExternalId: row.products.templateExternalId,
+      variantExternalId: row.products.variantExternalId,
+      attributeValues: row.products.attributeValues ?? {},
+      taxExternalId: row.products.taxExternalId,
+      catalogVersion: row.products.catalogVersion,
       code: row.products.code,
       barcode: row.products.barcode,
       name: row.products.name,
@@ -157,21 +184,24 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
       cost: row.products.cost,
       taxRate: row.products.taxRate,
       unit: row.products.unit,
-       productType: row.products.productType,
-       catalogStatus: row.products.catalogStatus,
+      productType: row.products.productType,
+      catalogStatus: row.products.catalogStatus,
       minStock: row.products.minStock,
       currentStock: row.products.currentStock,
+      stockProjection: row.products.stockProjection,
       isActive: row.products.isActive,
       createdAt: row.products.createdAt,
-       updatedAt: row.products.updatedAt,
-       variantGroupId: row.products.variantGroupId,
-       variantAttributes: row.products.variantAttributes ?? [],
-       variantValues: row.products.variantValues ?? {},
+      updatedAt: row.products.updatedAt,
+      variantGroupId: row.products.variantGroupId,
+      variantAttributes: row.products.variantAttributes ?? [],
+      variantValues: row.products.variantValues ?? {},
       rates: row._rates ?? [],
-       comboItems: row._comboItems ?? [],
+      reservationRates: row._reservationRates ?? [],
+      comboItems: row._comboItems ?? [],
       _deleted: false,
     }),
   },
+
   restaurants: {
     query: (db, cpUpdated, cpId, limit) =>
       db
@@ -182,6 +212,7 @@ const COLLECTIONS: Record<string, CollectionConfig> = {
         .limit(limit),
     transform: (row) => ({ ...row, rxid: String(row.id), _deleted: false }),
   },
+
   restaurant_tables: {
     query: (db, cpUpdated, cpId, limit) =>
       db
@@ -299,10 +330,17 @@ app.post("/:collection/push", async (c) => {
         const taxTotal = itemValues.reduce((sum, item) => sum + item.taxAmount, 0);
         const discountTotal = itemValues.reduce((sum, item) => sum + item.discountAmount, 0);
         await db.batch([
-           db.delete(saleItems).where(eq(saleItems.saleId, existing.id)),
-           db.insert(saleItems).values(itemValues),
-           db.update(sales).set({ subtotal, taxTotal, discountTotal, total: subtotal + taxTotal, tableId: body.tableId ?? undefined, notes: body.notes ?? undefined }).where(eq(sales.id, existing.id)),
-         ]);
+          db.delete(saleItems).where(eq(saleItems.saleId, existing.id)),
+          db.insert(saleItems).values(itemValues),
+          db.update(sales).set({
+            subtotal,
+            taxTotal,
+            discountTotal,
+            total: subtotal + taxTotal,
+            tableId: body.tableId ?? undefined,
+            notes: body.notes ?? undefined,
+          }).where(eq(sales.id, existing.id)),
+        ]);
         return c.json({ success: true, serverId: existing.id, receiptNumber: existing.receiptNumber });
       }
       if (existing && body.status === "completed") {
@@ -321,7 +359,7 @@ app.post("/:collection/push", async (c) => {
             amount: amountUsd,
             currency: payment.currency ?? "USD",
             amountOriginal: payment.amountOriginal ?? null,
-            exchangeRate: payment.currency === "VES" ? (payment.exchangeRate ?? usdRate) : null,
+            exchangeRate: payment.currency === "VES" ? (payment.exchangeRate ?? usdRate) : 1,
             reference: payment.reference ?? null,
             paymentDate: payment.paymentDate ?? null,
             phone: payment.phone ?? null,
@@ -330,11 +368,11 @@ app.post("/:collection/push", async (c) => {
         });
         if (Math.abs(paymentValues.reduce((sum, payment) => sum + payment.amountUsd, 0) - Number(existingSale?.total ?? 0)) > 0.01) return c.json({ error: "La suma de pagos no coincide con el total de la venta" }, 400);
         await db.batch([
-           db.delete(salePayments).where(eq(salePayments.saleId, existing.id)),
-           db.insert(salePayments).values(paymentValues),
-           db.update(sales).set({ status: "completed" }).where(eq(sales.id, existing.id)),
-           enqueueSaleOutboxStatement(db, { id: existing.id, clientId: body.clientId ?? null, receiptNumber: existing.receiptNumber }, "completed"),
-         ]);
+          db.delete(salePayments).where(eq(salePayments.saleId, existing.id)),
+          db.insert(salePayments).values(paymentValues),
+          db.update(sales).set({ status: "completed" }).where(eq(sales.id, existing.id)),
+          enqueueSaleOutboxStatement(db, { id: existing.id, clientId: body.clientId ?? null, receiptNumber: existing.receiptNumber }, "completed"),
+        ]);
         return c.json({ success: true, serverId: existing.id, receiptNumber: existing.receiptNumber });
       }
     }
@@ -429,7 +467,7 @@ app.post("/:collection/push", async (c) => {
         amount: amountUsd,
         currency: pay.currency ?? "USD",
         amountOriginal: pay.amountOriginal ?? null,
-        exchangeRate: pay.currency === "VES" ? (pay.exchangeRate ?? usdRate) : null,
+        exchangeRate: pay.currency === "VES" ? (pay.exchangeRate ?? usdRate) : 1,
         reference: pay.reference ?? null,
         paymentDate: pay.paymentDate ?? null,
         phone: pay.phone ?? null,
@@ -466,14 +504,16 @@ app.post("/:collection/push", async (c) => {
         customerId: body.customerId ?? null,
         userId: body.userId ?? null,
         tableId: body.tableId ?? null,
-         subtotal: calculatedSubtotal,
-         taxTotal: calculatedTax,
-         discountTotal: calculatedDiscount,
-         total: calculatedTotal,
+        subtotal: calculatedSubtotal,
+        taxTotal: calculatedTax,
+        discountTotal: calculatedDiscount,
+        total: calculatedTotal,
         notes: body.notes ?? null,
         status: "in_progress",
       }),
-      db.insert(saleItems).values(itemValues),
+      // Keep each item as its own statement inside the same D1 batch/transaction.
+      // A multi-row INSERT can exceed SQLite's bound-variable limit for large sales.
+      ...itemValues.map((item) => db.insert(saleItems).values(item)),
       ...(paymentValues.length ? [db.insert(salePayments).values(paymentValues)] : []),
       ...(reservationValues.length ? [db.insert(reservations).values(reservationValues)] : []),
       ...(body.status === "completed" ? [db.update(sales).set({ status: "completed" }).where(eq(sales.clientId, body.clientId))] : []),

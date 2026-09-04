@@ -331,7 +331,9 @@ app.post("/:id/pay", async (c) => {
   }
 
   const usdRate = await getCurrentRate(db, "USD", "VES");
-  if (!usdRate) return c.json({ error: "No hay tasa USD→VES configurada" }, 400);
+  if (body.payments.some((payment) => payment.currency === "VES") && !usdRate) {
+    return c.json({ error: "No hay tasa USD→VES configurada" }, 400);
+  }
 
   const methodRows = await db
     .select({ id: paymentMethods.id, isActive: paymentMethods.isActive })
@@ -343,13 +345,14 @@ app.post("/:id/pay", async (c) => {
   }
 
   const paymentValues = await Promise.all(body.payments.map(async (p) => {
-    const exchangeRate = p.currency === "VES" ? usdRate : null;
-    const amountUsd = p.currency === "VES" ? +(p.amount / usdRate).toFixed(2) : p.amount;
+    const exchangeRate = p.currency === "VES" ? usdRate! : 1;
+    const amountOriginal = p.amountOriginal ?? p.amount;
+    const amountUsd = p.currency === "VES" ? +(amountOriginal / exchangeRate).toFixed(2) : amountOriginal;
     return {
       saleId: id,
       paymentMethodId: p.paymentMethodId,
       amount: Math.round(amountUsd * 100) / 100,
-      amountOriginal: p.amount,
+      amountOriginal,
       exchangeRate,
       amountUsd: Math.round(amountUsd * 100) / 100,
       currency: p.currency,

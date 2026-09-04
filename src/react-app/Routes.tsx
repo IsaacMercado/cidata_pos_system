@@ -3,7 +3,6 @@ import { Redirect, Route, Switch } from "wouter-preact";
 import { useAuth } from "./components/Auth";
 import { AdminPage } from "./pages/AdminPage";
 import { ExchangeRatePage } from "./pages/ExchangeRatePage";
-import { default as HotelPosSystem } from "./pages/HotelPosSystem";
 import { LoginPage } from "./pages/LoginPage";
 import { PosPage } from "./pages/PosPage";
 import { ProductsPage } from "./pages/ProductsPage";
@@ -34,7 +33,6 @@ export default function Routes() {
             <Route path="/admin">{can("users") ? <AdminPage /> : <Redirect to="/" />}</Route>
             <Route path="/purchases">{can("purchases") ? <PurchaseOrdersPage /> : <Redirect to="/" />}</Route>
             <Route path="/exchange-rate">{can("exchange") ? <ExchangeRatePage /> : <Redirect to="/" />}</Route>
-            <Route path="/hotel-pos" component={HotelPosSystem} />
           </>
         )}
       </Switch>

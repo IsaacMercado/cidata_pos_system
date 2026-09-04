@@ -17,11 +17,13 @@ interface SimplePaymentDialogProps {
   currency: string;
   rate: number;
   payments: PaymentSplit[];
+  note: string;
   paymentsTotal: number;
   paymentDiff: number;
   submitting: boolean;
   onAddPaymentSplit: () => void;
   onUpdatePayment: (index: number, field: "methodId" | "amount", value: string | number) => void;
+  onNoteChange: (value: string) => void;
   onRemovePayment: (index: number) => void;
   onSubmitPayment: () => void;
 }
@@ -33,11 +35,13 @@ export function SimplePaymentDialog({
   currency,
   rate,
   payments,
+  note,
   paymentsTotal,
   paymentDiff,
   submitting,
   onAddPaymentSplit,
   onUpdatePayment,
+  onNoteChange,
   onRemovePayment,
   onSubmitPayment,
 }: SimplePaymentDialogProps) {
@@ -102,6 +106,20 @@ export function SimplePaymentDialog({
         <Plus size={14} className="inline mr-1 -mt-0.5" />
         Agregar otra forma de pago
       </button>
+
+      <div className="mt-4 space-y-1.5">
+        <label className="text-xs font-semibold uppercase tracking-wider text-slate-500" htmlFor="restaurant-payment-note">
+          Nota de la venta
+        </label>
+        <textarea
+          id="restaurant-payment-note"
+          className="min-h-20 w-full resize-y rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500"
+          placeholder="Agrega una nota para esta cuenta..."
+          maxLength={2000}
+          value={note}
+          onInput={(e: any) => onNoteChange(e.target.value)}
+        />
+      </div>
 
       <div className="mt-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 px-4 py-3 text-sm">
         <div className="flex items-center justify-between">

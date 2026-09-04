@@ -46,7 +46,7 @@ const globalCommands = [
   {
     id: "nav-products",
     label: "Ir a Productos",
-    description: "Gestionar inventario",
+    description: "Consultar catálogo y registrar conteos",
     shortcut: "G R",
     icon: <Package size={16} />,
     action: () => (window.location.href = "/products"),
@@ -72,8 +72,8 @@ const globalCommands = [
   },
   {
     id: "nav-purchases",
-    label: "Ir a Inventario",
-    description: "Órdenes de compra y recepciones",
+    label: "Ir a Solicitudes de compra",
+    description: "Solicitar reposición",
     shortcut: "G I",
     icon: <Warehouse size={16} />,
     action: () => (window.location.href = "/purchases"),

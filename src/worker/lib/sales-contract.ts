@@ -91,6 +91,7 @@ export const salePaymentSchema = z.object({
   currency: z.enum(["USD", "VES"]).default("USD"),
   amountOriginal: z.number().finite().positive().optional(),
   exchangeRate: z.number().finite().positive().optional(),
+  amountUsd: z.number().finite().positive().optional(),
   reference: z.string().trim().max(200).optional(),
   paymentDate: z.string().trim().max(40).optional(),
   phone: z.string().trim().max(40).optional(),
@@ -147,7 +148,7 @@ export function reservationNights(checkIn: string, checkOut: string): number {
 }
 
 export function reservationTotal(reservation: Pick<z.infer<typeof reservationSchema>, "checkIn" | "checkOut" | "guestPrice" | "guests">): number {
-  return Math.round(reservationNights(reservation.checkIn, reservation.checkOut) * reservation.guestPrice * reservation.guests * 100) / 100;
+  return Math.round(reservationNights(reservation.checkIn, reservation.checkOut) * reservation.guestPrice * 100) / 100;
 }
 
 export function validatePaymentDetails(payments: z.infer<typeof salePaymentsSchema>) {

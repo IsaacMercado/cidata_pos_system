@@ -201,14 +201,15 @@ bunx wrangler pages deploy dist --project-name=pos-frontend
 ### Desarrollo local
 
 ```bash
-# Terminal 1: Backend Worker
-cd pos-system
-bun run dev
-
-# Terminal 2: Frontend (Vite dev server con HMR)
-cd pos-system/frontend
-bun run dev
+# Worker, frontend y Odoo en una sola terminal.
+# Ctrl-C detiene limpiamente los tres procesos.
+bun run dev:stack
 ```
+
+El orquestador espera a que Worker (`8787`), frontend (`5173`) y Odoo (`8069`)
+estén disponibles. Sus logs se guardan temporalmente y se eliminan al cerrar.
+Para pruebas aisladas de integración, usa `bun run dev:stack:integration`, que
+selecciona una base D1 local separada de la base `pos-db` habitual.
 
 La app corre en modo PWA desde el primer build. Al abrirla en el navegador, pregunta
 "Instalar aplicación" automáticamente.

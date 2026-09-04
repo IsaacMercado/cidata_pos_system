@@ -68,6 +68,7 @@ export default defineConfig(({ command }) => ({
     projects: [{
       extends: true,
       test: {
+        include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
         browser: {
           enabled: true,
           headless: true,
@@ -76,6 +77,12 @@ export default defineConfig(({ command }) => ({
             browser: 'chromium'
           }]
         }
+      }
+    }, {
+      extends: true,
+      test: {
+        include: ["tests/**/*.test.ts"],
+        environment: "node",
       }
     }]
   }

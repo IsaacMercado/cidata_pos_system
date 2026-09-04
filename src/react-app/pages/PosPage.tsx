@@ -15,6 +15,7 @@ import { Button, Loading } from "../components/ui";
 import { useCurrency } from "../hooks/useCurrency";
 import { useOrders } from "../hooks/useOrders";
 import { usePayment } from "../hooks/usePayment";
+import { useAuth } from "../components/Auth";
 
 import {
   getDatabase,
@@ -60,6 +61,8 @@ export function PosPage() {
 
 function PosPageContent() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canResetDatabase = user?.role === "admin" || user?.isSuperuser === 1;
 
   // ── RxDB products ──
   const productLiveQuery = useMemo(
@@ -136,6 +139,8 @@ function PosPageContent() {
     setReceiptSale,
     submitting,
     payments,
+    note,
+    setNote,
     paymentsTotal,
     paymentDiff,
     openPayDialog,
@@ -335,6 +340,7 @@ function PosPageContent() {
             currency={currency}
             onCurrencyChange={setCurrency}
             exchangeRateText={exchangeRateText}
+            canResetDatabase={canResetDatabase}
           />
           <ProductGrid
             products={filteredProducts}
@@ -357,11 +363,13 @@ function PosPageContent() {
         currency={currency}
         exchangeRateText={exchangeRateText}
         payments={payments}
+        note={note}
         paymentsTotal={paymentsTotal}
         paymentDiff={paymentDiff}
         submitting={submitting}
         currencies={currencies}
         onUpdatePayment={updatePayment}
+        onNoteChange={setNote}
         onRemovePayment={removePayment}
         onAddPaymentSplit={addPaymentSplit}
         onSubmit={submitPayment}
