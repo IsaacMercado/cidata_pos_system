@@ -19,9 +19,11 @@ import { useAuth } from "../components/Auth";
 
 import {
   getDatabase,
+  downloadDatabaseDiagnosticBackup,
   type ProductDoc,
   type RxCollections,
 } from "../lib/database";
+import { loadSession } from "../lib/session";
 import type { ProductWithCategory } from "../lib/types";
 import {
   useKeyboardShortcuts,
@@ -40,14 +42,32 @@ export function PosPage() {
       .catch((e) => setDbError(e?.message || "Error al iniciar DB"));
   }, []);
 
-  if (dbError)
+  if (dbError) {
+    const session = loadSession();
+    const isAdmin = session?.user.role === "admin" || session?.user.isSuperuser === 1;
     return (
       <div className="flex h-dvh items-center justify-center p-4 text-center">
-        <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
-          {dbError}
-        </p>
+        <div className="max-w-3xl space-y-3">
+          <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3 whitespace-pre-wrap">
+            {dbError}
+          </p>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                void downloadDatabaseDiagnosticBackup().catch(() => {
+                  window.alert("No se pudo descargar la base local. No cierre esta pestaña hasta guardar el error.");
+                });
+              }}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Descargar base local para diagnóstico
+            </button>
+          )}
+        </div>
       </div>
     );
+  }
   if (!db) return <Loading spinner text="Cargando catálogo..." />;
 
   return (

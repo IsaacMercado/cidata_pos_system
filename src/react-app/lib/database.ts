@@ -586,6 +586,60 @@ function downloadErrorLog(info: SyncErrorInfo) {
   URL.revokeObjectURL(url);
 }
 
+async function readIndexedDbDatabase(name: string) {
+  const request = indexedDB.open(name);
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error(`No se pudo abrir ${name}`));
+  });
+
+  try {
+    const stores = Array.from(database.objectStoreNames);
+    const data: Record<string, unknown[]> = {};
+    for (const storeName of stores) {
+      data[storeName] = await new Promise<unknown[]>((resolve, reject) => {
+        const transaction = database.transaction(storeName, "readonly");
+        const request = transaction.objectStore(storeName).getAll();
+        request.onsuccess = () => resolve(request.result as unknown[]);
+        request.onerror = () => reject(request.error ?? new Error(`No se pudo leer ${storeName}`));
+      });
+    }
+    return { name, version: database.version, stores: data };
+  } finally {
+    database.close();
+  }
+}
+
+export async function downloadDatabaseDiagnosticBackup() {
+  if (!indexedDB.databases) {
+    throw new Error("Este navegador no permite leer las bases IndexedDB para diagnóstico.");
+  }
+  const databases = await indexedDB.databases();
+  const dump = {
+    format: "cidata-rxdb-indexeddb-diagnostic",
+    exportedAt: new Date().toISOString(),
+    databaseName: DB_NAME,
+    databases: await Promise.all(
+      databases
+        .map((database) => database.name)
+        .filter((name): name is string => Boolean(name))
+        .filter((name) => name.includes(`pos_offline`))
+        .map(readIndexedDbDatabase),
+    ),
+  };
+  const blob = new Blob([JSON.stringify(dump, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `pos-rxdb-diagnostic-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Shows a toast (with a download button) for a server-side error. Network
 // timeouts are not reported here, only real server responses with errors.
 function reportServerError(info: SyncErrorInfo) {
@@ -595,10 +649,18 @@ function reportServerError(info: SyncErrorInfo) {
   if (now - last >= SERVER_ERROR_COOLDOWN_MS) {
     lastServerErrorAt.set(key, now);
     console.error("RxDB replication server error", info);
+    const session = loadSession();
+    const isAdmin = session?.user.role === "admin" || session?.user.isSuperuser === 1;
     emitToast(
       info.message,
       "error",
-      { label: "Descargar", onClick: () => downloadErrorLog(info) },
+      {
+        label: isAdmin ? "Descargar BD + error" : "Descargar error",
+        onClick: () => {
+          downloadErrorLog(info);
+          if (isAdmin) void downloadDatabaseDiagnosticBackup();
+        },
+      },
       SERVER_ERROR_TOAST_DURATION,
     );
   }
@@ -655,7 +717,7 @@ async function pushSaleDocument(
     const requestUrl = `${API_BASE}/replicate/sales/push`;
     const body = buildPushBody(docData);
     const requestBody = JSON.stringify(body, null, 2);
-    const session = loadSession();
+  const session = loadSession();
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (session?.token) headers.Authorization = `Bearer ${session.token}`;
 
