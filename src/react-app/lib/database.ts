@@ -438,6 +438,7 @@ const databaseRuntime = ((globalThis as typeof globalThis & {
   __posDatabaseRuntime?: DatabaseRuntime;
 }).__posDatabaseRuntime ??= { promise: null });
 const activeReplications: { cancel: () => Promise<void> | void }[] = [];
+let databaseClosing = false;
 
 function makeStorage() {
   return wrappedValidateAjvStorage({ storage: getRxStorageDexie() });
@@ -519,6 +520,7 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
 };
 
 const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
+  databaseClosing = false;
   return createDatabase();
 };
 
@@ -550,8 +552,10 @@ type SyncErrorInfo = {
 const lastServerErrorAt = new Map<string, number>();
 const SERVER_ERROR_COOLDOWN_MS = 20_000;
 const SERVER_ERROR_TOAST_DURATION = 15_000;
-const pendingPushes = new Map<string, Promise<boolean>>();
 let pendingRetryTimer: number | null = null;
+let pendingRetryInFlight: Promise<void> | null = null;
+let retryHandler: (() => void) | null = null;
+const pendingPushes = new Map<string, Promise<boolean>>();
 
 function buildErrorLog(info: SyncErrorInfo): string {
   return [
@@ -736,6 +740,7 @@ async function pushSaleDocument(
   docData: any,
   document?: any,
 ): Promise<boolean> {
+  if (databaseClosing || collection.database.destroyed) return false;
   const key = docData.clientId || docData.rxid;
   const running = pendingPushes.get(key);
   if (running) return running;
@@ -810,6 +815,7 @@ async function pushSaleDocument(
 }
 
 async function retryPendingSales(collection: RxCollection<any>) {
+  if (databaseClosing || collection.database.destroyed) return;
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
   if (typeof navigator !== "undefined" && navigator.onLine && !loadSession()?.token) return;
   const pending = await collection
@@ -823,13 +829,27 @@ async function retryPendingSales(collection: RxCollection<any>) {
 function startPendingSalesRetry(collection: RxCollection<any>) {
   if (typeof window === "undefined") return;
   const retry = async () => {
-    await retryPendingSales(collection).catch((error) => console.error("Pending sales retry failed", error));
-    pendingRetryTimer = window.setTimeout(retry, 15_000);
+    if (databaseClosing || pendingRetryInFlight) return;
+    const run = retryPendingSales(collection).catch((error) => {
+      if (!databaseClosing) console.error("Pending sales retry failed", error);
+    });
+    pendingRetryInFlight = run;
+    try {
+      await run;
+    } finally {
+      if (pendingRetryInFlight === run) pendingRetryInFlight = null;
+      if (!databaseClosing) pendingRetryTimer = window.setTimeout(retry, 15_000);
+    }
   };
   if (pendingRetryTimer !== null) window.clearTimeout(pendingRetryTimer);
+  if (retryHandler) {
+    window.removeEventListener("online", retryHandler);
+    window.removeEventListener("focus", retryHandler);
+  }
+  retryHandler = () => { void retry(); };
   pendingRetryTimer = window.setTimeout(retry, 1_000);
-  window.addEventListener("online", retry);
-  window.addEventListener("focus", retry);
+  window.addEventListener("online", retryHandler);
+  window.addEventListener("focus", retryHandler);
 }
 
 // Helper to read the raw response body as text (keeps non-JSON error pages
@@ -948,7 +968,7 @@ function startPushReplication(collection: RxCollection<any>) {
 
 export async function resetDatabase() {
   const db = await databaseRuntime.promise?.catch(() => null);
-  const pendingSales = db
+  const pendingSales = db && !databaseClosing
     ? await db.sales.find({ selector: { syncStatus: "pending" }, limit: 1 }).exec()
     : [];
   if (pendingSales.length > 0) {
@@ -956,15 +976,24 @@ export async function resetDatabase() {
   }
 
   try {
+    databaseClosing = true;
     if (pendingRetryTimer !== null && typeof window !== "undefined") {
       window.clearTimeout(pendingRetryTimer);
       pendingRetryTimer = null;
     }
+    if (typeof window !== "undefined" && retryHandler) {
+      window.removeEventListener("online", retryHandler);
+      window.removeEventListener("focus", retryHandler);
+      retryHandler = null;
+    }
     await Promise.all(activeReplications.splice(0).map((replication) => replication.cancel()));
+    await pendingRetryInFlight;
+    await Promise.all(pendingPushes.values());
     await db?.close();
     databaseRuntime.promise = null;
     await removeRxDatabase(DB_NAME, getRxStorageDexie());
   } catch (e) {
+    databaseClosing = false;
     console.warn("Error resetting database:", e);
     throw e;
   }
