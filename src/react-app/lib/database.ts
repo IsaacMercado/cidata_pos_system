@@ -459,6 +459,94 @@ function makeStorage() {
   return wrappedValidateAjvStorage({ storage: getRxStorageDexie() });
 }
 
+function isSalesMigrationFailure(error: unknown) {
+  const errorObject = error as { message?: unknown; stack?: unknown } | null;
+  const text = `${String(errorObject?.message ?? "")} ${String(errorObject?.stack ?? "")} ${String(error)}`.toLowerCase();
+  return text.includes("pos_offline-sales") ||
+    text.includes(`${DB_NAME.toLowerCase()}-sales`) ||
+    text.includes("sales-v-2") ||
+    text.includes("migration") && text.includes("sales");
+}
+
+function deleteIndexedDb(name: string) {
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error(`No se pudo eliminar ${name}`));
+    request.onblocked = () => reject(new Error(`La base ${name} sigue bloqueada`));
+  });
+}
+
+async function recoverFailedSalesMigration() {
+  if (typeof indexedDB === "undefined") return false;
+  const prefix = `rxdb-dexie-${DB_NAME}--`;
+  const internalName = `${prefix}0--_rxdb_internal`;
+  const internal = await new Promise<any>((resolve, reject) => {
+    const request = indexedDB.open(internalName);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains("docs")) {
+        database.close();
+        resolve(null);
+        return;
+      }
+      const read = database.transaction("docs", "readonly").objectStore("docs").get("collection|sales-2");
+      read.onsuccess = () => {
+        const doc = read.result;
+        database.close();
+        resolve(doc);
+      };
+      read.onerror = () => {
+        database.close();
+        reject(read.error);
+      };
+    };
+  });
+
+  const connectedMeta = internal?.data?.connectedStorages ?? [];
+  const salesMetaNames = connectedMeta
+    .map((meta: any) => meta.collectionName)
+    .filter((name: unknown): name is string => typeof name === "string");
+  const databaseNames = (await indexedDB.databases())
+    .map((database) => database.name)
+    .filter((name): name is string => Boolean(name));
+  const targetNames = databaseNames.filter((name) =>
+    name === `${prefix}2--sales` ||
+    name === `${prefix}1--rx-migration-state-meta-sales-1` ||
+    salesMetaNames.some((metaName: string) => name === `${prefix}2--${metaName}`),
+  );
+
+  if (!targetNames.length && !internal) return false;
+  traceDatabase("sales-migration-recovery:start", { targetNames, hasInternalMeta: Boolean(internal) });
+  await Promise.all(targetNames.map((name) => deleteIndexedDb(name)));
+
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(internalName);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains("docs")) {
+        database.close();
+        resolve();
+        return;
+      }
+      const transaction = database.transaction("docs", "readwrite");
+      transaction.objectStore("docs").delete("rx-migration-status|sales-v-2");
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+  });
+  traceDatabase("sales-migration-recovery:done", { preservedCollection: `${prefix}1--sales` });
+  return true;
+}
+
 const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
   traceDatabase("createDatabase:start", { name: DB_NAME });
   if (import.meta.env.DEV) {
@@ -475,7 +563,8 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
   traceDatabase("createDatabase:createRxDatabase:done", { name: db.name });
 
   traceDatabase("createDatabase:addCollections:start");
-  await db.addCollections({
+  try {
+    await db.addCollections({
     products: {
       schema: productSchema,
       migrationStrategies: {
@@ -549,7 +638,12 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
         },
       },
     },
-  });
+    });
+  } catch (error) {
+    traceDatabase("createDatabase:addCollections:error", error);
+    await db.close().catch((closeError) => traceDatabase("createDatabase:close-after-error", closeError));
+    throw error;
+  }
   traceDatabase("createDatabase:addCollections:done", {
     collections: Object.keys(db.collections),
   });
@@ -569,10 +663,21 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
 const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
   traceDatabase("getDatabaseInner:start", { existingPromise: Boolean(databaseRuntime.promise) });
   databaseClosing = false;
+  let salesRecoveryAttempted = false;
   try {
-    const db = await createDatabase();
-    traceDatabase("getDatabaseInner:done", { name: db.name });
-    return db;
+    while (true) {
+      try {
+        const db = await createDatabase();
+        traceDatabase("getDatabaseInner:done", { name: db.name });
+        return db;
+      } catch (error) {
+        if (salesRecoveryAttempted || !isSalesMigrationFailure(error)) throw error;
+        salesRecoveryAttempted = true;
+        const recovered = await recoverFailedSalesMigration();
+        if (!recovered) throw error;
+        traceDatabase("getDatabaseInner:retry-after-sales-recovery");
+      }
+    }
   } catch (error) {
     traceDatabase("getDatabaseInner:error", error);
     throw error;
