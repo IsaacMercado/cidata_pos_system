@@ -431,7 +431,22 @@ export type RxCollections = {
   sales: RxCollection<SaleDoc>;
 };
 
-const DB_NAME = "pos_offline";
+const DB_NAME = import.meta.env.VITE_RXDB_DATABASE_NAME || "pos_offline";
+
+let databaseTraceSequence = 0;
+function traceDatabase(event: string, details?: unknown) {
+  const prefix = `[RxDB trace ${++databaseTraceSequence}] ${new Date().toISOString()} ${event}`;
+  if (details === undefined) console.log(prefix);
+  else console.log(prefix, details);
+}
+
+function traceMigration(collection: string, fromVersion: number, doc: any, result: any) {
+  traceDatabase(`migration ${collection} ${fromVersion}->${fromVersion + 1}`, {
+    rxid: doc?.rxid,
+    id: doc?.id,
+    resultRxid: result?.rxid,
+  });
+}
 
 type DatabaseRuntime = { promise: Promise<RxDatabase<RxCollections>> | null };
 const databaseRuntime = ((globalThis as typeof globalThis & {
@@ -445,33 +460,46 @@ function makeStorage() {
 }
 
 const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
+  traceDatabase("createDatabase:start", { name: DB_NAME });
   if (import.meta.env.DEV) {
     addRxPlugin(RxDBDevModePlugin);
   }
 
+  traceDatabase("createDatabase:createRxDatabase:start");
   const db = await createRxDatabase<RxCollections>({
     name: DB_NAME,
     storage: makeStorage(),
     multiInstance: true,
     eventReduce: true,
   });
+  traceDatabase("createDatabase:createRxDatabase:done", { name: db.name });
 
+  traceDatabase("createDatabase:addCollections:start");
   await db.addCollections({
     products: {
       schema: productSchema,
       migrationStrategies: {
-        1: (doc: ProductDoc) => ({
-          ...doc,
+        1: (doc: ProductDoc) => {
+          const result = {
+            ...doc,
           variantGroupId: doc.variantGroupId ?? null,
           variantAttributes: doc.variantAttributes ?? [],
           variantValues: doc.variantValues ?? {},
-        }),
-        2: (doc: ProductDoc) => ({
-          ...doc,
+          };
+          traceMigration("products", 1, doc, result);
+          return result;
+        },
+        2: (doc: ProductDoc) => {
+          const result = {
+            ...doc,
           reservationRates: doc.reservationRates ?? [],
-        }),
-        3: (doc: ProductDoc) => ({
-          ...doc,
+          };
+          traceMigration("products", 2, doc, result);
+          return result;
+        },
+        3: (doc: ProductDoc) => {
+          const result = {
+            ...doc,
           externalId: doc.externalId ?? doc.code ?? null,
           templateExternalId: doc.templateExternalId ?? null,
           variantExternalId: doc.variantExternalId ?? null,
@@ -480,21 +508,32 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
           catalogVersion: doc.catalogVersion ?? 1,
           stockProjection: doc.stockProjection ?? doc.currentStock ?? 0,
           stockOfficial: doc.stockOfficial ?? null,
-        }),
+          };
+          traceMigration("products", 3, doc, result);
+          return result;
+        },
       },
     },
     restaurants: { schema: restaurantSchema },
     restaurant_tables: { schema: restaurantTableSchema },
     operators: {
       schema: operatorSchema,
-      migrationStrategies: { 1: (doc: any) => { delete doc.pinHash; return doc; } },
+      migrationStrategies: { 1: (doc: any) => {
+        traceDatabase("migration operators 1->2", { rxid: doc?.rxid, id: doc?.id });
+        delete doc.pinHash;
+        return doc;
+      } },
     },
     sales: {
       schema: saleSchema,
       migrationStrategies: {
-        1: (doc: any) => doc,
-        2: (doc: any) => ({
-          ...doc,
+        1: (doc: any) => {
+          traceMigration("sales", 1, doc, doc);
+          return doc;
+        },
+        2: (doc: any) => {
+          const result = {
+            ...doc,
           items: (doc.items || []).map((item: any) =>
             item.discounts ? item : { ...item, discounts: [] },
           ),
@@ -504,11 +543,18 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
             exchangeRate: payment.exchangeRate ?? (payment.currency === "USD" ? 1 : null),
             amountUsd: payment.amountUsd ?? payment.amount ?? 0,
           })),
-        }),
+          };
+          traceMigration("sales", 2, doc, result);
+          return result;
+        },
       },
     },
   });
+  traceDatabase("createDatabase:addCollections:done", {
+    collections: Object.keys(db.collections),
+  });
 
+  traceDatabase("createDatabase:startReplications");
   startReplication(db.products, "products");
   startReplication(db.restaurants, "restaurants");
   startReplication(db.restaurant_tables, "restaurant_tables");
@@ -516,12 +562,21 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
   startPushReplication(db.sales);
   startPendingSalesRetry(db.sales);
 
+  traceDatabase("createDatabase:done", { name: db.name });
   return db;
 };
 
 const getDatabaseInner = async (): Promise<RxDatabase<RxCollections>> => {
+  traceDatabase("getDatabaseInner:start", { existingPromise: Boolean(databaseRuntime.promise) });
   databaseClosing = false;
-  return createDatabase();
+  try {
+    const db = await createDatabase();
+    traceDatabase("getDatabaseInner:done", { name: db.name });
+    return db;
+  } catch (error) {
+    traceDatabase("getDatabaseInner:error", error);
+    throw error;
+  }
 };
 
 function authHeaders(): HeadersInit {
@@ -740,10 +795,20 @@ async function pushSaleDocument(
   docData: any,
   document?: any,
 ): Promise<boolean> {
+  traceDatabase("sales:push:start", {
+    rxid: docData?.rxid,
+    clientId: docData?.clientId,
+    closing: databaseClosing,
+    destroyed: collection.database.destroyed,
+    hasDocument: Boolean(document),
+  });
   if (databaseClosing || collection.database.destroyed) return false;
   const key = docData.clientId || docData.rxid;
   const running = pendingPushes.get(key);
-  if (running) return running;
+  if (running) {
+    traceDatabase("sales:push:deduplicated", { key });
+    return running;
+  }
 
   const promise = (async () => {
     const requestUrl = `${API_BASE}/replicate/sales/push`;
@@ -754,6 +819,7 @@ async function pushSaleDocument(
     if (session?.token) headers.Authorization = `Bearer ${session.token}`;
 
     try {
+      traceDatabase("sales:push:request", { key, requestUrl });
       const res = await fetch(requestUrl, {
         method: "POST",
         headers,
@@ -761,6 +827,7 @@ async function pushSaleDocument(
         body: JSON.stringify(body),
       });
       const { text, json } = await readResponse(res);
+      traceDatabase("sales:push:response", { key, status: res.status, ok: res.ok, success: json?.success });
       if (!res.ok || !json?.success) {
         if (res.status === 401 || res.status === 403) {
           notifyAuthFailure(res.status, "/replicate/sales/push");
@@ -782,15 +849,19 @@ async function pushSaleDocument(
 
       const target = document || await collection.findOne(docData.rxid).exec();
       if (target) {
+        traceDatabase("sales:push:patch:start", { key });
         await target.incrementalPatch({
           serverId: json.serverId ?? null,
           receiptNumber: json.receiptNumber ?? target.receiptNumber,
           syncStatus: "synced",
           updatedAt: new Date().toISOString(),
         });
+        traceDatabase("sales:push:patch:done", { key });
       }
+      traceDatabase("sales:push:done", { key });
       return true;
     } catch (error) {
+      traceDatabase("sales:push:error", { key, error });
       reportServerError({
         collection: "sales",
         direction: "push",
@@ -808,27 +879,37 @@ async function pushSaleDocument(
 
   pendingPushes.set(key, promise);
   try {
+    traceDatabase("sales:push:await", { key });
     return await promise;
   } finally {
     pendingPushes.delete(key);
+    traceDatabase("sales:push:finally", { key });
   }
 }
 
 async function retryPendingSales(collection: RxCollection<any>) {
+  traceDatabase("sales:retry:start", {
+    closing: databaseClosing,
+    destroyed: collection.database.destroyed,
+  });
   if (databaseClosing || collection.database.destroyed) return;
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
   if (typeof navigator !== "undefined" && navigator.onLine && !loadSession()?.token) return;
   const pending = await collection
     .find({ selector: { syncStatus: "pending" }, sort: [{ createdAt: "asc" }] })
     .exec();
+  traceDatabase("sales:retry:found", { count: pending.length });
   for (const document of pending) {
+    traceDatabase("sales:retry:document", { rxid: document.get("rxid"), syncStatus: document.get("syncStatus") });
     await pushSaleDocument(collection, document.toJSON(), document);
   }
+  traceDatabase("sales:retry:done");
 }
 
 function startPendingSalesRetry(collection: RxCollection<any>) {
   if (typeof window === "undefined") return;
   const retry = async () => {
+    traceDatabase("sales:retry:trigger", { closing: databaseClosing, inFlight: Boolean(pendingRetryInFlight) });
     if (databaseClosing || pendingRetryInFlight) return;
     const run = retryPendingSales(collection).catch((error) => {
       if (!databaseClosing) console.error("Pending sales retry failed", error);
@@ -839,6 +920,7 @@ function startPendingSalesRetry(collection: RxCollection<any>) {
     } finally {
       if (pendingRetryInFlight === run) pendingRetryInFlight = null;
       if (!databaseClosing) pendingRetryTimer = window.setTimeout(retry, 15_000);
+      traceDatabase("sales:retry:finally", { closing: databaseClosing });
     }
   };
   if (pendingRetryTimer !== null) window.clearTimeout(pendingRetryTimer);
@@ -848,6 +930,7 @@ function startPendingSalesRetry(collection: RxCollection<any>) {
   }
   retryHandler = () => { void retry(); };
   pendingRetryTimer = window.setTimeout(retry, 1_000);
+  traceDatabase("sales:retry:scheduled", { delayMs: 1000 });
   window.addEventListener("online", retryHandler);
   window.addEventListener("focus", retryHandler);
 }
@@ -874,6 +957,7 @@ async function readResponse(res: Response): Promise<{
 }
 
 function startReplication(collection: RxCollection<any>, name: string) {
+  traceDatabase("replication:pull:start", { name, db: collection.database.name });
   const replication = replicateRxCollection({
     collection,
     replicationIdentifier: "server",
@@ -882,6 +966,7 @@ function startReplication(collection: RxCollection<any>, name: string) {
     deletedField: "_deleted",
     pull: {
       async handler(checkpoint: any, batchSize: number) {
+        traceDatabase("replication:pull:handler", { name, checkpoint, batchSize });
         const requestUrl = `${API_BASE}/replicate/${name}/pull`;
         const requestBody = JSON.stringify(
           { checkpoint: checkpoint ?? null, limit: batchSize },
@@ -898,6 +983,13 @@ function startReplication(collection: RxCollection<any>, name: string) {
           }),
         });
         const { text, json } = await readResponse(res);
+        traceDatabase("replication:pull:response", {
+          name,
+          status: res.status,
+          ok: res.ok,
+          documentCount: Array.isArray(json?.documents) ? json.documents.length : null,
+          checkpoint: json?.checkpoint,
+        });
         if (!res.ok || !json || !Array.isArray(json.documents)) {
           if (res.status === 401 || res.status === 403) {
             notifyAuthFailure(res.status, `/replicate/${name}/pull`);
@@ -932,10 +1024,12 @@ function startReplication(collection: RxCollection<any>, name: string) {
     },
   });
   activeReplications.push(replication);
+  traceDatabase("replication:pull:started", { name });
   return replication;
 }
 
 function startPushReplication(collection: RxCollection<any>) {
+  traceDatabase("replication:push:start", { name: "sales", db: collection.database.name });
   const replication = replicateRxCollection({
     collection,
     replicationIdentifier: "push-server",
@@ -945,6 +1039,7 @@ function startPushReplication(collection: RxCollection<any>) {
     push: {
       modifier: async (doc: any) => doc.syncStatus === "pending" ? doc : null,
       handler: async (documents: any[]) => {
+        traceDatabase("replication:push:handler", { count: documents.length });
         let batchFailed = false;
 
         for (const doc of documents) {
@@ -956,27 +1051,33 @@ function startPushReplication(collection: RxCollection<any>) {
         // Throwing makes RxDB retry the whole batch after retryTime instead of
         // marking the failed documents as successfully pushed.
         if (batchFailed) {
+          traceDatabase("replication:push:failed", { count: documents.length });
           throw new ServerError("Error de sincronización con el servidor");
         }
+        traceDatabase("replication:push:done", { count: documents.length });
         return [];
       },
     },
   });
   activeReplications.push(replication);
+  traceDatabase("replication:push:started", { name: "sales" });
   return replication;
 }
 
 export async function resetDatabase() {
+  traceDatabase("reset:start", { hasPromise: Boolean(databaseRuntime.promise), closing: databaseClosing });
   const db = await databaseRuntime.promise?.catch(() => null);
   const pendingSales = db && !databaseClosing
     ? await db.sales.find({ selector: { syncStatus: "pending" }, limit: 1 }).exec()
     : [];
   if (pendingSales.length > 0) {
+    traceDatabase("reset:blocked-pending-sales", { count: pendingSales.length });
     throw new Error("Hay ventas pendientes de sincronización");
   }
 
   try {
     databaseClosing = true;
+    traceDatabase("reset:closing:start", { db: db?.name });
     if (pendingRetryTimer !== null && typeof window !== "undefined") {
       window.clearTimeout(pendingRetryTimer);
       pendingRetryTimer = null;
@@ -987,13 +1088,19 @@ export async function resetDatabase() {
       retryHandler = null;
     }
     await Promise.all(activeReplications.splice(0).map((replication) => replication.cancel()));
+    traceDatabase("reset:replications-cancelled");
     await pendingRetryInFlight;
+    traceDatabase("reset:retry-finished");
     await Promise.all(pendingPushes.values());
+    traceDatabase("reset:pushes-finished");
     await db?.close();
+    traceDatabase("reset:db-closed");
     databaseRuntime.promise = null;
     await removeRxDatabase(DB_NAME, getRxStorageDexie());
+    traceDatabase("reset:removed", { name: DB_NAME });
   } catch (e) {
     databaseClosing = false;
+    traceDatabase("reset:error", e);
     console.warn("Error resetting database:", e);
     throw e;
   }
@@ -1016,11 +1123,18 @@ export async function downloadDatabaseBackup() {
 }
 
 export const getDatabase = (): Promise<RxDatabase<RxCollections>> => {
+  traceDatabase("getDatabase:called", {
+    hasPromise: Boolean(databaseRuntime.promise),
+    closing: databaseClosing,
+  });
   if (!databaseRuntime.promise) {
+    traceDatabase("getDatabase:create-promise");
     databaseRuntime.promise = getDatabaseInner().catch((e) => {
+      traceDatabase("getDatabase:promise-error", e);
       databaseRuntime.promise = null;
       throw e;
     });
   }
+  traceDatabase("getDatabase:return", { hasPromise: Boolean(databaseRuntime.promise) });
   return databaseRuntime.promise;
 };

@@ -37,9 +37,19 @@ export function PosPage() {
   const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("[RxDB trace] PosPage:getDatabase:start");
     getDatabase()
-      .then(setDb)
-      .catch((e) => setDbError(e?.message || "Error al iniciar DB"));
+      .then((database) => {
+        console.log("[RxDB trace] PosPage:getDatabase:done", {
+          name: database.name,
+          collections: Object.keys(database.collections),
+        });
+        setDb(database);
+      })
+      .catch((e) => {
+        console.log("[RxDB trace] PosPage:getDatabase:error", e);
+        setDbError(e?.message || "Error al iniciar DB");
+      });
   }, []);
 
   if (dbError) {
@@ -97,6 +107,13 @@ function PosPageContent() {
   );
   const { results: rxdbResults, loading: productsLoading } =
     useLiveRxQuery<ProductDoc>(productLiveQuery);
+
+  useEffect(() => {
+    console.log("[RxDB trace] PosPage:products-query", {
+      loading: productsLoading,
+      count: rxdbResults.length,
+    });
+  }, [productsLoading, rxdbResults.length]);
 
   const products = useMemo(
     () =>
