@@ -454,6 +454,7 @@ const databaseRuntime = ((globalThis as typeof globalThis & {
 }).__posDatabaseRuntime ??= { promise: null });
 const activeReplications: { cancel: () => Promise<void> | void }[] = [];
 let databaseClosing = false;
+let recoveredSalesDocs: any[] | null = null;
 
 function makeStorage() {
   return wrappedValidateAjvStorage({ storage: getRxStorageDexie() });
@@ -504,22 +505,57 @@ async function recoverFailedSalesMigration() {
     };
   });
 
-  const connectedMeta = internal?.data?.connectedStorages ?? [];
-  const salesMetaNames = connectedMeta
-    .map((meta: any) => meta.collectionName)
-    .filter((name: unknown): name is string => typeof name === "string");
   const databaseNames = (await indexedDB.databases())
     .map((database) => database.name)
     .filter((name): name is string => Boolean(name));
-  const targetNames = databaseNames.filter((name) =>
-    name === `${prefix}2--sales` ||
-    name === `${prefix}1--rx-migration-state-meta-sales-1` ||
-    salesMetaNames.some((metaName: string) => name === `${prefix}2--${metaName}`),
+  const salesMetaNames = (internal?.data?.connectedStorages ?? [])
+    .map((meta: any) => meta.collectionName)
+    .filter((name: unknown): name is string => typeof name === "string");
+  const salesDatabaseNames = databaseNames.filter((name) =>
+    name.startsWith(prefix) && (
+      /--\d+--sales$/.test(name) ||
+      /--\d+--rx-migration-state-meta-sales-\d+$/.test(name) ||
+    salesMetaNames.some((metaName: string) => name.endsWith(`--${metaName}`))
+    ),
   );
 
-  if (!targetNames.length && !internal) return false;
-  traceDatabase("sales-migration-recovery:start", { targetNames, hasInternalMeta: Boolean(internal) });
-  await Promise.all(targetNames.map((name) => deleteIndexedDb(name)));
+  const salesDocs = new Map<string, any>();
+  for (const name of databaseNames.filter((candidate) => /--\d+--sales$/.test(candidate))) {
+    const docs = await new Promise<any[]>((resolve, reject) => {
+      const request = indexedDB.open(name);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains("docs")) {
+          database.close();
+          resolve([]);
+          return;
+        }
+        const read = database.transaction("docs", "readonly").objectStore("docs").getAll();
+        read.onsuccess = () => {
+          database.close();
+          resolve(read.result);
+        };
+        read.onerror = () => {
+          database.close();
+          reject(read.error);
+        };
+      };
+    });
+    for (const doc of docs) {
+      if (doc?.rxid && doc._deleted !== "1" && doc._deleted !== true) {
+        salesDocs.set(doc.rxid, doc);
+      }
+    }
+  }
+
+  if (!salesDatabaseNames.length && !internal) return false;
+  traceDatabase("sales-migration-recovery:start", {
+    targetNames: salesDatabaseNames,
+    preservedSales: salesDocs.size,
+    hasInternalMeta: Boolean(internal),
+  });
+  await Promise.all(salesDatabaseNames.map((name) => deleteIndexedDb(name)));
 
   await new Promise<void>((resolve, reject) => {
     const request = indexedDB.open(internalName);
@@ -532,7 +568,15 @@ async function recoverFailedSalesMigration() {
         return;
       }
       const transaction = database.transaction("docs", "readwrite");
-      transaction.objectStore("docs").delete("rx-migration-status|sales-v-2");
+      const store = transaction.objectStore("docs");
+      const keysRequest = store.getAllKeys();
+      keysRequest.onsuccess = () => {
+        for (const key of keysRequest.result) {
+          if (String(key).startsWith("collection|sales-") || String(key).startsWith("rx-migration-status|sales-v-")) {
+            store.delete(key);
+          }
+        }
+      };
       transaction.oncomplete = () => {
         database.close();
         resolve();
@@ -543,8 +587,36 @@ async function recoverFailedSalesMigration() {
       };
     };
   });
-  traceDatabase("sales-migration-recovery:done", { preservedCollection: `${prefix}1--sales` });
+  recoveredSalesDocs = [...salesDocs.values()];
+  traceDatabase("sales-migration-recovery:done", { preservedSales: recoveredSalesDocs.length });
   return true;
+}
+
+async function restoreRecoveredSales(collection: RxCollection<SaleDoc>) {
+  if (!recoveredSalesDocs?.length) return;
+  const documents = recoveredSalesDocs.map((source) => {
+    const document = structuredClone(source);
+    delete document._rev;
+    delete document._meta;
+    delete document._attachments;
+    document._deleted = false;
+    document.items = (document.items || []).map((item: any) => ({
+      ...item,
+      discounts: item.discounts ?? [],
+    }));
+    document.payments = (document.payments || []).map((payment: any) => ({
+      ...payment,
+      amountOriginal: payment.amountOriginal ?? payment.amount ?? 0,
+      exchangeRate: payment.exchangeRate ?? (payment.currency === "USD" ? 1 : null),
+      amountUsd: payment.amountUsd ?? payment.amount ?? 0,
+    }));
+    return document;
+  });
+  traceDatabase("sales-migration-recovery:restore:start", { count: documents.length });
+  const result = await collection.bulkInsert(documents);
+  if (result.error.length) throw new Error(`No se pudieron restaurar ventas: ${result.error[0].context}`);
+  recoveredSalesDocs = null;
+  traceDatabase("sales-migration-recovery:restore:done", { count: documents.length });
 }
 
 const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
@@ -644,6 +716,7 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     await db.close().catch((closeError) => traceDatabase("createDatabase:close-after-error", closeError));
     throw error;
   }
+  await restoreRecoveredSales(db.sales);
   traceDatabase("createDatabase:addCollections:done", {
     collections: Object.keys(db.collections),
   });
