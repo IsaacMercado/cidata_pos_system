@@ -479,25 +479,25 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     products: {
       schema: productSchema,
       migrationStrategies: {
-        1: (doc: ProductDoc) => {
+        0: (doc: ProductDoc) => {
           const result = {
             ...doc,
           variantGroupId: doc.variantGroupId ?? null,
           variantAttributes: doc.variantAttributes ?? [],
           variantValues: doc.variantValues ?? {},
           };
-          traceMigration("products", 1, doc, result);
+          traceMigration("products", 0, doc, result);
           return result;
         },
-        2: (doc: ProductDoc) => {
+        1: (doc: ProductDoc) => {
           const result = {
             ...doc,
           reservationRates: doc.reservationRates ?? [],
           };
-          traceMigration("products", 2, doc, result);
+          traceMigration("products", 1, doc, result);
           return result;
         },
-        3: (doc: ProductDoc) => {
+        2: (doc: ProductDoc) => {
           const result = {
             ...doc,
           externalId: doc.externalId ?? doc.code ?? null,
@@ -509,7 +509,7 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
           stockProjection: doc.stockProjection ?? doc.currentStock ?? 0,
           stockOfficial: doc.stockOfficial ?? null,
           };
-          traceMigration("products", 3, doc, result);
+          traceMigration("products", 2, doc, result);
           return result;
         },
       },
@@ -518,8 +518,8 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     restaurant_tables: { schema: restaurantTableSchema },
     operators: {
       schema: operatorSchema,
-      migrationStrategies: { 1: (doc: any) => {
-        traceDatabase("migration operators 1->2", { rxid: doc?.rxid, id: doc?.id });
+      migrationStrategies: { 0: (doc: any) => {
+        traceDatabase("migration operators 0->1", { rxid: doc?.rxid, id: doc?.id });
         delete doc.pinHash;
         return doc;
       } },
@@ -527,11 +527,11 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
     sales: {
       schema: saleSchema,
       migrationStrategies: {
-        1: (doc: any) => {
-          traceMigration("sales", 1, doc, doc);
+        0: (doc: any) => {
+          traceMigration("sales", 0, doc, doc);
           return doc;
         },
-        2: (doc: any) => {
+        1: (doc: any) => {
           const result = {
             ...doc,
           items: (doc.items || []).map((item: any) =>
@@ -544,7 +544,7 @@ const createDatabase = async (): Promise<RxDatabase<RxCollections>> => {
             amountUsd: payment.amountUsd ?? payment.amount ?? 0,
           })),
           };
-          traceMigration("sales", 2, doc, result);
+          traceMigration("sales", 1, doc, result);
           return result;
         },
       },
