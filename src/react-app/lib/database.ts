@@ -776,17 +776,30 @@ function buildPushBody(docData: any) {
       discountPercent: Number(item.discountPercent || 0),
       discountAmount: Number(item.discountAmount || 0),
     })),
-    payments: (docData.payments || []).map((payment: any) => ({
-      paymentMethodId: Number(payment.paymentMethodId),
-      amount: Number(payment.amount),
-      currency: payment.currency || "USD",
-      amountOriginal: Number(payment.amountOriginal ?? payment.amount),
-      exchangeRate: Number(payment.exchangeRate ?? (payment.currency === "USD" ? 1 : 0)),
-      amountUsd: Number(payment.amountUsd ?? payment.amount),
-      ...(payment.reference ? { reference: String(payment.reference) } : {}),
-      ...(payment.paymentDate ? { paymentDate: String(payment.paymentDate) } : {}),
-      ...(payment.phone ? { phone: String(payment.phone) } : {}),
-    })),
+    payments: (docData.payments || []).map((payment: any) => {
+      const currency = payment.currency || "USD";
+      const amount = Number(payment.amount);
+      const amountOriginal = Number(payment.amountOriginal ?? payment.amount);
+      const storedRate = Number(payment.exchangeRate);
+      // Older offline sales could persist a zero VES rate. Recover it from the
+      // original amount before sending so those sales can still synchronize.
+      const derivedRate = amountOriginal > 0 && amount > 0 ? amountOriginal / amount : 0;
+      const candidateRate = storedRate > 0 ? storedRate : derivedRate;
+      const exchangeRate = currency === "VES"
+        ? Number.isFinite(candidateRate) && candidateRate > 0 ? candidateRate : undefined
+        : 1;
+      return {
+        paymentMethodId: Number(payment.paymentMethodId),
+        amount,
+        currency,
+        amountOriginal,
+        ...(exchangeRate !== undefined ? { exchangeRate } : {}),
+        amountUsd: Number(payment.amountUsd ?? amount),
+        ...(payment.reference ? { reference: String(payment.reference) } : {}),
+        ...(payment.paymentDate ? { paymentDate: String(payment.paymentDate) } : {}),
+        ...(payment.phone ? { phone: String(payment.phone) } : {}),
+      };
+    }),
     ...(docData.customerId != null ? { customerId: Number(docData.customerId) } : {}),
     ...(docData.userId != null ? { userId: Number(docData.userId) } : {}),
     ...(docData.tableId != null ? { tableId: Number(docData.tableId) } : {}),
